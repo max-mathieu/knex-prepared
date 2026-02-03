@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import Knex from 'knex';
-import { knexPrepared, PREPARED_SYMBOL } from '../src/index';
-import type { PreparedMetadata } from '../src/index';
+import { knexPrepared } from '../src/index';
+import { getMetadata, getKnexEvents } from './test-utils';
 
 describe('knexPrepared integration', () => {
   it('should initialize all features in one call', () => {
@@ -17,7 +17,7 @@ describe('knexPrepared integration', () => {
     expect(typeof query.prepared).toBe('function');
 
     // Query event listeners should be attached
-    const listeners = (knex as any)._events?.query;
+    const listeners = getKnexEvents(knex)?.query;
     expect(listeners).toBeDefined();
   });
 
@@ -25,7 +25,7 @@ describe('knexPrepared integration', () => {
     const knex = knexPrepared(Knex({ client: 'pg' }));
     const query = knex.prepared('users').select('*');
 
-    const metadata = (query as any)[PREPARED_SYMBOL] as PreparedMetadata;
+    const metadata = getMetadata(query);
     expect(metadata).toBeDefined();
     expect(metadata.name).toBe('auto');
   });
@@ -34,7 +34,7 @@ describe('knexPrepared integration', () => {
     const knex = knexPrepared(Knex({ client: 'pg' }));
     const query = knex('users').prepared().select('*');
 
-    const metadata = (query as any)[PREPARED_SYMBOL] as PreparedMetadata;
+    const metadata = getMetadata(query);
     expect(metadata).toBeDefined();
     expect(metadata.name).toBe('auto');
   });
@@ -43,7 +43,7 @@ describe('knexPrepared integration', () => {
     const knex = knexPrepared(Knex({ client: 'pg' }));
     const query = knex('users').prepared('my-custom-name').select('*');
 
-    const metadata = (query as any)[PREPARED_SYMBOL] as PreparedMetadata;
+    const metadata = getMetadata(query);
     expect(metadata).toBeDefined();
     expect(metadata.name).toBe('my-custom-name');
   });
@@ -52,7 +52,7 @@ describe('knexPrepared integration', () => {
     const knex = knexPrepared(Knex({ client: 'pg' }));
     const query = knex('users').prepared(false).select('*');
 
-    const metadata = (query as any)[PREPARED_SYMBOL] as PreparedMetadata;
+    const metadata = getMetadata(query);
     expect(metadata).toBeDefined();
     expect(metadata.name).toBeNull();
   });
@@ -62,11 +62,11 @@ describe('knexPrepared integration', () => {
 
     // Factory then override with chainable
     const query1 = knex.prepared('users').prepared('custom');
-    expect((query1 as any)[PREPARED_SYMBOL].name).toBe('custom');
+    expect(getMetadata(query1)?.name).toBe('custom');
 
     // Factory then disable
     const query2 = knex.prepared('users').prepared(false);
-    expect((query2 as any)[PREPARED_SYMBOL].name).toBeNull();
+    expect(getMetadata(query2)?.name).toBeNull();
   });
 
   it('should handle complex queries', () => {
@@ -82,7 +82,7 @@ describe('knexPrepared integration', () => {
       .limit(10)
       .offset(20);
 
-    const metadata = (query as any)[PREPARED_SYMBOL] as PreparedMetadata;
+    const metadata = getMetadata(query);
     expect(metadata.name).toBe('auto');
 
     const sql = query.toSQL();
@@ -96,25 +96,25 @@ describe('knexPrepared integration', () => {
 
     // SELECT
     const select = knex.prepared('users').select('*');
-    expect((select as any)[PREPARED_SYMBOL].name).toBe('auto');
+    expect(getMetadata(select)?.name).toBe('auto');
 
     // INSERT
     const insert = knex.prepared('users').insert({ name: 'test', email: 'test@test.com' });
-    expect((insert as any)[PREPARED_SYMBOL].name).toBe('auto');
+    expect(getMetadata(insert)?.name).toBe('auto');
 
     // UPDATE
     const update = knex.prepared('users').where('id', 1).update({ name: 'updated' });
-    expect((update as any)[PREPARED_SYMBOL].name).toBe('auto');
+    expect(getMetadata(update)?.name).toBe('auto');
 
     // DELETE
     const del = knex.prepared('users').where('id', 1).delete();
-    expect((del as any)[PREPARED_SYMBOL].name).toBe('auto');
+    expect(getMetadata(del)?.name).toBe('auto');
   });
 
   it('should emit query events with prepared statement names', () => {
     const knex = knexPrepared(Knex({ client: 'pg' }));
 
-    let capturedQueryData: any = null;
+    let capturedQueryData: unknown = null;
     knex.on('query', (data) => {
       capturedQueryData = data;
     });
@@ -123,7 +123,7 @@ describe('knexPrepared integration', () => {
     const sql = query.toSQL();
 
     // Simulate query execution by emitting event with builder
-    (knex as any).emit('query', {
+    (knex as unknown as { emit: (event: string, data: unknown) => void }).emit('query', {
       sql: sql.sql,
       bindings: sql.bindings,
       __knexQueryBuilder: query,
@@ -152,6 +152,6 @@ describe('knexPrepared integration', () => {
 
     expect(knex.prepared).toBeDefined();
     const query = knex.prepared('users').select('*');
-    expect((query as any)[PREPARED_SYMBOL].name).toBe('auto');
+    expect(getMetadata(query).name).toBe('auto');
   });
 });

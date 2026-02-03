@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import Knex from 'knex';
-import { extendQueryBuilder, PREPARED_SYMBOL } from '../src/query-builder';
-import type { PreparedMetadata } from '../src/query-builder';
+import { extendQueryBuilder } from '../src/query-builder';
+import { getMetadata, type QueryBuilderWithMetadata } from './test-utils';
 
 describe('extendQueryBuilder', () => {
   let knex: ReturnType<typeof Knex>;
@@ -29,7 +29,7 @@ describe('extendQueryBuilder', () => {
     const query = knex('users').select('*');
     query.prepared();
 
-    const metadata = (query as any)[PREPARED_SYMBOL] as PreparedMetadata;
+    const metadata = getMetadata(query);
     expect(metadata).toBeDefined();
     expect(metadata.name).toBe('auto');
   });
@@ -38,7 +38,7 @@ describe('extendQueryBuilder', () => {
     const query = knex('users').select('*');
     query.prepared(true);
 
-    const metadata = (query as any)[PREPARED_SYMBOL] as PreparedMetadata;
+    const metadata = getMetadata(query);
     expect(metadata).toBeDefined();
     expect(metadata.name).toBe('auto');
   });
@@ -47,7 +47,7 @@ describe('extendQueryBuilder', () => {
     const query = knex('users').select('*');
     query.prepared(false);
 
-    const metadata = (query as any)[PREPARED_SYMBOL] as PreparedMetadata;
+    const metadata = getMetadata(query);
     expect(metadata).toBeDefined();
     expect(metadata.name).toBeNull();
   });
@@ -56,7 +56,7 @@ describe('extendQueryBuilder', () => {
     const query = knex('users').select('*');
     query.prepared('custom-statement-name');
 
-    const metadata = (query as any)[PREPARED_SYMBOL] as PreparedMetadata;
+    const metadata = getMetadata(query);
     expect(metadata).toBeDefined();
     expect(metadata.name).toBe('custom-statement-name');
   });
@@ -65,37 +65,37 @@ describe('extendQueryBuilder', () => {
     const query = knex('users').prepared('test').select('*').where('id', 1);
 
     expect(query).toBeDefined();
-    const metadata = (query as any)[PREPARED_SYMBOL] as PreparedMetadata;
+    const metadata = getMetadata(query);
     expect(metadata.name).toBe('test');
   });
 
   it('should work with different query types', () => {
     // SELECT
     const selectQuery = knex('users').prepared().select('*');
-    expect((selectQuery as any)[PREPARED_SYMBOL].name).toBe('auto');
+    expect(getMetadata(selectQuery)?.name).toBe('auto');
 
     // INSERT
     const insertQuery = knex('users').prepared('insert-user').insert({ name: 'test' });
-    expect((insertQuery as any)[PREPARED_SYMBOL].name).toBe('insert-user');
+    expect(getMetadata(insertQuery)?.name).toBe('insert-user');
 
     // UPDATE
     const updateQuery = knex('users').prepared().where('id', 1).update({ name: 'new' });
-    expect((updateQuery as any)[PREPARED_SYMBOL].name).toBe('auto');
+    expect(getMetadata(updateQuery)?.name).toBe('auto');
 
     // DELETE
     const deleteQuery = knex('users').prepared(false).where('id', 1).delete();
-    expect((deleteQuery as any)[PREPARED_SYMBOL].name).toBeNull();
+    expect(getMetadata(deleteQuery)?.name).toBeNull();
   });
 
   it('should throw error for invalid argument types', () => {
     const query = knex('users').select('*');
 
     expect(() => {
-      (query as any).prepared(123);
+      (query as QueryBuilderWithMetadata).prepared(123 as never);
     }).toThrow('Invalid argument to .prepared()');
 
     expect(() => {
-      (query as any).prepared({});
+      (query as QueryBuilderWithMetadata).prepared({} as never);
     }).toThrow('Invalid argument to .prepared()');
   });
 
@@ -103,12 +103,12 @@ describe('extendQueryBuilder', () => {
     const query = knex('users').select('*');
 
     query.prepared('first');
-    expect((query as any)[PREPARED_SYMBOL].name).toBe('first');
+    expect(getMetadata(query)?.name).toBe('first');
 
     query.prepared('second');
-    expect((query as any)[PREPARED_SYMBOL].name).toBe('second');
+    expect(getMetadata(query)?.name).toBe('second');
 
     query.prepared(false);
-    expect((query as any)[PREPARED_SYMBOL].name).toBeNull();
+    expect(getMetadata(query)?.name).toBeNull();
   });
 });

@@ -1,16 +1,16 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import Knex from 'knex';
-import { addPreparedFactory } from '../src/factory';
-import { extendQueryBuilder, PREPARED_SYMBOL } from '../src/query-builder';
-import type { PreparedMetadata } from '../src/query-builder';
+import { addPreparedFactory, type PreparedFactory } from '../src/factory';
+import { extendQueryBuilder } from '../src/query-builder';
+import { getMetadata } from './test-utils';
 
 describe('addPreparedFactory', () => {
-  let knex: ReturnType<typeof Knex> & { prepared: any };
+  let knex: ReturnType<typeof Knex> & { prepared: PreparedFactory };
 
   beforeAll(() => {
     const baseKnex = Knex({ client: 'pg' });
     extendQueryBuilder(baseKnex);
-    knex = addPreparedFactory(baseKnex) as any;
+    knex = addPreparedFactory(baseKnex);
   });
 
   it('should add .prepared() factory method to Knex instance', () => {
@@ -22,40 +22,40 @@ describe('addPreparedFactory', () => {
     const query = knex.prepared('users');
 
     expect(query).toBeDefined();
-    const metadata = (query as any)[PREPARED_SYMBOL] as PreparedMetadata;
+    const metadata = getMetadata(query);
     expect(metadata).toBeDefined();
-    expect(metadata.name).toBe('auto');
+    expect(metadata?.name).toBe('auto');
   });
 
   it('should return a chainable QueryBuilder', () => {
     const query = knex.prepared('users').select('*').where('id', 1);
 
     expect(query).toBeDefined();
-    const metadata = (query as any)[PREPARED_SYMBOL] as PreparedMetadata;
-    expect(metadata.name).toBe('auto');
+    const metadata = getMetadata(query);
+    expect(metadata?.name).toBe('auto');
   });
 
   it('should work with different table names', () => {
     const usersQuery = knex.prepared('users');
     const postsQuery = knex.prepared('posts');
 
-    expect((usersQuery as any)[PREPARED_SYMBOL].name).toBe('auto');
-    expect((postsQuery as any)[PREPARED_SYMBOL].name).toBe('auto');
+    expect(getMetadata(usersQuery)?.name).toBe('auto');
+    expect(getMetadata(postsQuery)?.name).toBe('auto');
   });
 
   it('should allow further chaining with .prepared() method', () => {
     // Start with factory, then override with chainable method
     const query = knex.prepared('users').prepared('custom-name');
 
-    const metadata = (query as any)[PREPARED_SYMBOL] as PreparedMetadata;
+    const metadata = getMetadata(query);
     expect(metadata.name).toBe('custom-name');
   });
 
   it('should allow disabling prepared statements after factory call', () => {
     const query = knex.prepared('users').prepared(false);
 
-    const metadata = (query as any)[PREPARED_SYMBOL] as PreparedMetadata;
-    expect(metadata.name).toBeNull();
+    const metadata = getMetadata(query);
+    expect(metadata?.name).toBeNull();
   });
 
   it('should create valid QueryBuilder that can be built to SQL', () => {
@@ -91,8 +91,8 @@ describe('addPreparedFactory', () => {
       .limit(10);
 
     expect(query).toBeDefined();
-    const metadata = (query as any)[PREPARED_SYMBOL] as PreparedMetadata;
-    expect(metadata.name).toBe('auto');
+    const metadata = getMetadata(query);
+    expect(metadata?.name).toBe('auto');
 
     const sql = query.toSQL();
     expect(sql.sql).toContain('join');
@@ -102,18 +102,18 @@ describe('addPreparedFactory', () => {
   it('should support different query types', () => {
     // SELECT
     const selectQuery = knex.prepared('users').select('*');
-    expect((selectQuery as any)[PREPARED_SYMBOL].name).toBe('auto');
+    expect(getMetadata(selectQuery)?.name).toBe('auto');
 
     // INSERT
     const insertQuery = knex.prepared('users').insert({ name: 'test' });
-    expect((insertQuery as any)[PREPARED_SYMBOL].name).toBe('auto');
+    expect(getMetadata(insertQuery)?.name).toBe('auto');
 
     // UPDATE
     const updateQuery = knex.prepared('users').where('id', 1).update({ name: 'new' });
-    expect((updateQuery as any)[PREPARED_SYMBOL].name).toBe('auto');
+    expect(getMetadata(updateQuery)?.name).toBe('auto');
 
     // DELETE
     const deleteQuery = knex.prepared('users').where('id', 1).delete();
-    expect((deleteQuery as any)[PREPARED_SYMBOL].name).toBe('auto');
+    expect(getMetadata(deleteQuery)?.name).toBe('auto');
   });
 });

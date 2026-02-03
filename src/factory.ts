@@ -4,10 +4,10 @@ import { PREPARED_SYMBOL, type PreparedMetadata } from './query-builder';
 /**
  * Factory method return type - a QueryBuilder with prepared statement metadata already set.
  */
-export type PreparedQueryBuilder<TRecord extends {} = any, TResult = any[]> = Knex.QueryBuilder<
-  TRecord,
-  TResult
->;
+export type PreparedQueryBuilder<
+  TRecord extends {} = Record<string, unknown>,
+  TResult = unknown[],
+> = Knex.QueryBuilder<TRecord, TResult>;
 
 /**
  * Adds the `prepared(tableName)` factory method to a Knex instance.
@@ -33,14 +33,16 @@ export type PreparedQueryBuilder<TRecord extends {} = any, TResult = any[]> = Kn
 export function addPreparedFactory(knex: Knex): Knex & { prepared: PreparedFactory } {
   const extended = knex as Knex & { prepared: PreparedFactory };
 
-  extended.prepared = function <TRecord extends {} = any, TResult = any[]>(
+  extended.prepared = function <TRecord extends {} = Record<string, unknown>, TResult = unknown[]>(
     tableName: string
   ): PreparedQueryBuilder<TRecord, TResult> {
     // Create a query builder for the table
-    const builder = knex(tableName) as any;
+    const builder = knex<TRecord, TResult>(tableName);
 
     // Set the prepared statement metadata to auto-generate name
-    builder[PREPARED_SYMBOL] = { name: 'auto' } as PreparedMetadata;
+    (builder as unknown as Record<symbol, PreparedMetadata>)[PREPARED_SYMBOL] = {
+      name: 'auto',
+    };
 
     return builder as PreparedQueryBuilder<TRecord, TResult>;
   };
@@ -66,13 +68,15 @@ export interface PreparedFactory {
    * await knex.prepared('users').where('id', 1).first();
    * ```
    */
-  <TRecord extends {} = any, TResult = any[]>(
+  <TRecord extends {} = Record<string, unknown>, TResult = unknown[]>(
     tableName: string
   ): PreparedQueryBuilder<TRecord, TResult>;
 }
 
 // TypeScript module augmentation to add the factory method to Knex
 declare module 'knex' {
+  // Must match Knex's own default type parameters
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   interface Knex<TRecord = any, TResult = any[]> {
     /**
      * Create a QueryBuilder for the specified table with prepared statements enabled.

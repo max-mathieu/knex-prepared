@@ -3,6 +3,18 @@ import { PREPARED_SYMBOL, type PreparedMetadata } from './query-builder';
 import { generatePreparedStatementName } from './hash';
 
 /**
+ * Type for query data passed to Knex query event handlers
+ */
+interface QueryData {
+  __knexQueryBuilder?: {
+    [PREPARED_SYMBOL]?: PreparedMetadata;
+  };
+  sql?: string | unknown;
+  name?: string;
+  bindings?: unknown[];
+}
+
+/**
  * Attaches a query event hook to intercept queries and inject prepared statement names.
  *
  * This function hooks into Knex's 'query' event, which fires before each query execution.
@@ -24,7 +36,7 @@ import { generatePreparedStatementName } from './hash';
  * ```
  */
 export function attachPreparedStatementHook(knex: Knex): void {
-  knex.on('query', (queryData: any) => {
+  knex.on('query', (queryData: QueryData) => {
     // Get the builder instance if available
     // The queryData object may contain a __knexQueryUid or builder reference
     const builder = queryData.__knexQueryBuilder;

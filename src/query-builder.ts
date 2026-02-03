@@ -36,49 +36,73 @@ export interface PreparedMetadata {
  * extendQueryBuilder(knex);
  * ```
  */
+/**
+ * Type for the QueryBuilder constructor with extend method
+ */
+interface QueryBuilderConstructor {
+  prototype: {
+    prepared?: unknown;
+  };
+  extend: (
+    name: string,
+    fn: (this: QueryBuilderInstance, arg?: string | boolean) => unknown
+  ) => void;
+}
+
+/**
+ * Type for QueryBuilder instance with Symbol indexing support
+ */
+interface QueryBuilderInstance {
+  [key: symbol]: PreparedMetadata;
+}
+
 export function extendQueryBuilder(knex: Knex): void {
   // Access QueryBuilder through a Knex instance
   // We create a dummy query to get access to the QueryBuilder constructor
   const dummyQuery = knex.queryBuilder();
-  const QueryBuilderConstructor = dummyQuery.constructor as any;
+  const QueryBuilderConstructor = dummyQuery.constructor as unknown as QueryBuilderConstructor;
 
   // Check if already extended to make this function idempotent
   if (QueryBuilderConstructor.prototype.prepared) {
     return;
   }
 
-  QueryBuilderConstructor.extend('prepared', function (this: any, nameOrFlag?: string | boolean) {
-    // Handle different argument types:
-    // - undefined or true: auto-generate name
-    // - false: disable prepared statements
-    // - string: use custom name
+  QueryBuilderConstructor.extend(
+    'prepared',
+    function (this: QueryBuilderInstance, nameOrFlag?: string | boolean) {
+      // Handle different argument types:
+      // - undefined or true: auto-generate name
+      // - false: disable prepared statements
+      // - string: use custom name
 
-    let metadata: PreparedMetadata;
+      let metadata: PreparedMetadata;
 
-    if (nameOrFlag === false) {
-      metadata = { name: null };
-    } else if (nameOrFlag === undefined || nameOrFlag === true) {
-      metadata = { name: 'auto' };
-    } else if (typeof nameOrFlag === 'string') {
-      metadata = { name: nameOrFlag };
-    } else {
-      throw new Error(
-        `Invalid argument to .prepared(): expected string, boolean, or undefined, got ${typeof nameOrFlag}`
-      );
+      if (nameOrFlag === false) {
+        metadata = { name: null };
+      } else if (nameOrFlag === undefined || nameOrFlag === true) {
+        metadata = { name: 'auto' };
+      } else if (typeof nameOrFlag === 'string') {
+        metadata = { name: nameOrFlag };
+      } else {
+        throw new Error(
+          `Invalid argument to .prepared(): expected string, boolean, or undefined, got ${typeof nameOrFlag}`
+        );
+      }
+
+      // Store metadata using Symbol
+      this[PREPARED_SYMBOL] = metadata;
+
+      // Return this for chaining
+      return this;
     }
-
-    // Store metadata using Symbol
-    this[PREPARED_SYMBOL] = metadata;
-
-    // Return this for chaining
-    return this;
-  });
+  );
 }
 
 // TypeScript module augmentation to add .prepared() to Knex types
 declare module 'knex' {
   namespace Knex {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    // Must match Knex's own default type parameters
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any
     interface QueryBuilder<TRecord = any, TResult = any> {
       /**
        * Enable prepared statements for this query.
