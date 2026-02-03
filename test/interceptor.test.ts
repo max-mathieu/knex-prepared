@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, vi } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import Knex from 'knex';
 import { attachPreparedStatementHook } from '../src/interceptor';
 import { extendQueryBuilder, PREPARED_SYMBOL } from '../src/query-builder';

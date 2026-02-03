@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import type { Knex } from 'knex';
 import { createTestKnex, setupTestTables, seedTestData, teardownTestTables } from './setup';
 
 describe('Integration tests with PostgreSQL', () => {
@@ -200,11 +199,7 @@ describe('Integration tests with PostgreSQL', () => {
     });
 
     it('should handle queries with ORDER BY and LIMIT', async () => {
-      const results = await knex
-        .prepared('users')
-        .select('*')
-        .orderBy('name', 'asc')
-        .limit(2);
+      const results = await knex.prepared('users').select('*').orderBy('name', 'asc').limit(2);
 
       expect(results).toHaveLength(2);
       expect(results[0].name).toBe('Alice');
@@ -225,11 +220,7 @@ describe('Integration tests with PostgreSQL', () => {
     });
 
     it('should handle queries with aggregations', async () => {
-      const result = await knex
-        .prepared('users')
-        .count('* as count')
-        .where('active', true)
-        .first();
+      const result = await knex.prepared('users').count('* as count').where('active', true).first();
 
       expect(result?.count).toBe('2');
     });
@@ -271,10 +262,7 @@ describe('Integration tests with PostgreSQL', () => {
 
   describe('Subqueries', () => {
     it('should handle subqueries in WHERE clause', async () => {
-      const subquery = knex('posts')
-        .select('user_id')
-        .where('published', true)
-        .groupBy('user_id');
+      const subquery = knex('posts').select('user_id').where('published', true).groupBy('user_id');
 
       const results = await knex.prepared('users').select('*').whereIn('id', subquery);
 
@@ -284,9 +272,7 @@ describe('Integration tests with PostgreSQL', () => {
 
   describe('Error handling', () => {
     it('should handle query errors appropriately', async () => {
-      await expect(
-        knex.prepared('non_existent_table').select('*')
-      ).rejects.toThrow();
+      await expect(knex.prepared('non_existent_table').select('*')).rejects.toThrow();
     });
 
     it('should handle constraint violations', async () => {

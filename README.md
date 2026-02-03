@@ -1,5 +1,9 @@
 # knex-prepared
 
+[![npm version](https://badge.fury.io/js/knex-prepared.svg)](https://badge.fury.io/js/knex-prepared)
+[![CI](https://github.com/max/knex-prepared/actions/workflows/ci.yml/badge.svg)](https://github.com/max/knex-prepared/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 Extends Knex.js to support PostgreSQL prepared statements with simple, type-safe APIs.
 
 ## Installation

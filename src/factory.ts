@@ -66,7 +66,9 @@ export interface PreparedFactory {
    * await knex.prepared('users').where('id', 1).first();
    * ```
    */
-  <TRecord extends {} = any, TResult = any[]>(tableName: string): PreparedQueryBuilder<TRecord, TResult>;
+  <TRecord extends {} = any, TResult = any[]>(
+    tableName: string
+  ): PreparedQueryBuilder<TRecord, TResult>;
 }
 
 // TypeScript module augmentation to add the factory method to Knex

@@ -78,6 +78,7 @@ export function extendQueryBuilder(knex: Knex): void {
 // TypeScript module augmentation to add .prepared() to Knex types
 declare module 'knex' {
   namespace Knex {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     interface QueryBuilder<TRecord = any, TResult = any> {
       /**
        * Enable prepared statements for this query.
