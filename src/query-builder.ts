@@ -42,6 +42,11 @@ export function extendQueryBuilder(knex: Knex): void {
   const dummyQuery = knex.queryBuilder();
   const QueryBuilderConstructor = dummyQuery.constructor as any;
 
+  // Check if already extended to make this function idempotent
+  if (QueryBuilderConstructor.prototype.prepared) {
+    return;
+  }
+
   QueryBuilderConstructor.extend('prepared', function (this: any, nameOrFlag?: string | boolean) {
     // Handle different argument types:
     // - undefined or true: auto-generate name

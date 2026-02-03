@@ -4,7 +4,7 @@ import { PREPARED_SYMBOL, type PreparedMetadata } from './query-builder';
 /**
  * Factory method return type - a QueryBuilder with prepared statement metadata already set.
  */
-export type PreparedQueryBuilder<TRecord = any, TResult = any[]> = Knex.QueryBuilder<
+export type PreparedQueryBuilder<TRecord extends {} = any, TResult = any[]> = Knex.QueryBuilder<
   TRecord,
   TResult
 >;
@@ -33,7 +33,7 @@ export type PreparedQueryBuilder<TRecord = any, TResult = any[]> = Knex.QueryBui
 export function addPreparedFactory(knex: Knex): Knex & { prepared: PreparedFactory } {
   const extended = knex as Knex & { prepared: PreparedFactory };
 
-  extended.prepared = function <TRecord = any, TResult = any[]>(
+  extended.prepared = function <TRecord extends {} = any, TResult = any[]>(
     tableName: string
   ): PreparedQueryBuilder<TRecord, TResult> {
     // Create a query builder for the table
@@ -66,7 +66,7 @@ export interface PreparedFactory {
    * await knex.prepared('users').where('id', 1).first();
    * ```
    */
-  <TRecord = any, TResult = any[]>(tableName: string): PreparedQueryBuilder<TRecord, TResult>;
+  <TRecord extends {} = any, TResult = any[]>(tableName: string): PreparedQueryBuilder<TRecord, TResult>;
 }
 
 // TypeScript module augmentation to add the factory method to Knex
@@ -86,7 +86,7 @@ declare module 'knex' {
      * await knex.prepared('users').where('active', true).select('id', 'name');
      * ```
      */
-    prepared<TRecord2 = TRecord, TResult2 = TResult>(
+    prepared<TRecord2 extends {} = TRecord, TResult2 = TResult>(
       tableName: string
     ): Knex.QueryBuilder<TRecord2, TResult2>;
   }
