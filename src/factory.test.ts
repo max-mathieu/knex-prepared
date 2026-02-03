@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import Knex from 'knex';
-import { addPreparedFactory, type PreparedFactory } from '../src/factory';
-import { extendQueryBuilder } from '../src/query-builder';
+import { addPreparedFactory, type PreparedFactory } from './factory';
+import { extendQueryBuilder } from './query-builder';
 import { getMetadata } from './test-utils';
 
 describe('addPreparedFactory', () => {

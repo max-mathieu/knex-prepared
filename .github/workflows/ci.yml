@@ -51,11 +51,11 @@ jobs:
       - name: Run tests
         run: npm test
         env:
-          PGHOST: localhost
-          PGPORT: 5432
-          PGUSER: postgres
-          PGPASSWORD: postgres
-          PGDATABASE: knex_prepared_test
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          DB_NAME: knex_prepared_test
 
       - name: Build
         run: npm run build

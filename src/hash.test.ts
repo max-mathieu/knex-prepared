@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generatePreparedStatementName } from '../src/hash';
+import { generatePreparedStatementName } from './hash';
 
 describe('generatePreparedStatementName', () => {
   it('should generate a name with auto- prefix', () => {

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import Knex from 'knex';
-import { extendQueryBuilder } from '../src/query-builder';
+import { extendQueryBuilder } from './query-builder';
 import { getMetadata, type QueryBuilderWithMetadata } from './test-utils';
 
 describe('extendQueryBuilder', () => {

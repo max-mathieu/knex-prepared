@@ -1,6 +1,6 @@
 import type { Knex } from 'knex';
-import type { PreparedMetadata } from '../src/query-builder';
-import { PREPARED_SYMBOL } from '../src/query-builder';
+import type { PreparedMetadata } from './query-builder';
+import { PREPARED_SYMBOL } from './query-builder';
 
 /**
  * Type for accessing internal Knex properties in tests

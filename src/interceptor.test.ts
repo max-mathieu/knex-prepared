@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import Knex from 'knex';
-import { attachPreparedStatementHook } from '../src/interceptor';
-import { extendQueryBuilder, PREPARED_SYMBOL } from '../src/query-builder';
-import type { PreparedMetadata } from '../src/query-builder';
+import { attachPreparedStatementHook } from './interceptor';
+import { extendQueryBuilder, PREPARED_SYMBOL } from './query-builder';
+import type { PreparedMetadata } from './query-builder';
 import { getKnexEvents } from './test-utils';
 
 describe('attachPreparedStatementHook', () => {

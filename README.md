@@ -226,11 +226,11 @@ docker stop postgres-test && docker rm postgres-test
 
 ### Environment Variables for Integration Tests
 
-- `PGHOST` (default: localhost)
-- `PGPORT` (default: 5432)
-- `PGUSER` (default: postgres)
-- `PGPASSWORD` (default: postgres)
-- `PGDATABASE` (default: knex_prepared_test)
+- `DB_HOST` (default: localhost)
+- `DB_PORT` (default: 5432)
+- `DB_USER` (default: postgres)
+- `DB_PASSWORD` (default: postgres)
+- `DB_NAME` (default: knex_prepared_test)
 
 ## Contributing
 

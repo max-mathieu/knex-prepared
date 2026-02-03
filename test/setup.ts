@@ -12,11 +12,11 @@ import { knexPrepared } from '../src/index';
  * ### 1. Local PostgreSQL (for development)
  * Start a local PostgreSQL instance and run:
  * ```bash
- * export PGHOST=localhost
- * export PGPORT=5432
- * export PGUSER=postgres
- * export PGPASSWORD=postgres
- * export PGDATABASE=knex_prepared_test
+ * export DB_HOST=localhost
+ * export DB_PORT=5432
+ * export DB_USER=postgres
+ * export DB_PASSWORD=postgres
+ * export DB_NAME=knex_prepared_test
  * npm test
  * ```
  *
@@ -35,11 +35,11 @@ import { knexPrepared } from '../src/index';
  * Creates a test Knex instance connected to PostgreSQL.
  *
  * Connection configuration is loaded from environment variables:
- * - PGHOST (default: localhost)
- * - PGPORT (default: 5432)
- * - PGUSER (default: postgres)
- * - PGPASSWORD (default: postgres)
- * - PGDATABASE (default: knex_prepared_test)
+ * - DB_HOST (default: localhost)
+ * - DB_PORT (default: 5432)
+ * - DB_USER (default: postgres)
+ * - DB_PASSWORD (default: postgres)
+ * - DB_NAME (default: knex_prepared_test)
  *
  * @returns A Knex instance with prepared statement support
  */
@@ -47,11 +47,11 @@ export function createTestKnex() {
   const baseKnex = Knex({
     client: 'pg',
     connection: {
-      host: process.env.PGHOST || 'localhost',
-      port: parseInt(process.env.PGPORT || '5432', 10),
-      user: process.env.PGUSER || 'postgres',
-      password: process.env.PGPASSWORD || 'postgres',
-      database: process.env.PGDATABASE || 'knex_prepared_test',
+      host: process.env.DB_HOST || 'localhost',
+      port: parseInt(process.env.DB_PORT || '5432', 10),
+      user: process.env.DB_USER || 'postgres',
+      password: process.env.DB_PASSWORD || 'postgres',
+      database: process.env.DB_NAME || 'knex_prepared_test',
     },
     pool: {
       min: 2,

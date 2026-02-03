@@ -21,5 +21,12 @@
     "allowSyntheticDefaultImports": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "test", "benchmark"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "test",
+    "benchmark",
+    "**/*.test.ts",
+    "**/test-utils.ts"
+  ]
 }

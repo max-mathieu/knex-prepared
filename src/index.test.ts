@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import Knex from 'knex';
-import { knexPrepared } from '../src/index';
+import { knexPrepared } from './index';
 import { getMetadata, getKnexEvents } from './test-utils';
 
 describe('knexPrepared integration', () => {
