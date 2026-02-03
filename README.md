@@ -217,35 +217,81 @@ npm install
 
 # Run unit tests (no database required)
 npm test
-
-# Run all tests including integration tests (requires PostgreSQL)
-docker run --name postgres-test -e POSTGRES_PASSWORD=postgres -p 5432:5432 -d postgres:16
-npm test
-docker stop postgres-test && docker rm postgres-test
 ```
 
-### Environment Variables for Integration Tests
+### Integration Tests
 
-- `DB_HOST` (default: localhost)
-- `DB_PORT` (default: 5432)
-- `DB_USER` (default: postgres)
-- `DB_PASSWORD` (default: postgres)
-- `DB_NAME` (default: knex_prepared_test)
+Integration tests require a PostgreSQL database. Configure using a `.env` file or environment variables.
 
-## Benchmarks
-
-You can run performance benchmarks to compare prepared statements vs regular queries:
+**Option 1: Using .env file (recommended)**
 
 ```bash
+# Copy the example env file
+cp .env.example .env
+
+# Edit .env with your database credentials (if needed)
+# The defaults work with the Docker command below
+
 # Start PostgreSQL
 docker run --name postgres-test -e POSTGRES_PASSWORD=postgres -p 5432:5432 -d postgres:16
 
-# Run benchmarks
-npm run benchmark
+# Run all tests (including integration tests)
+npm test
 
 # Stop PostgreSQL
 docker stop postgres-test && docker rm postgres-test
 ```
+
+**Option 2: Using environment variables**
+
+```bash
+export DB_HOST=localhost
+export DB_PORT=5432
+export DB_USER=postgres
+export DB_PASSWORD=postgres
+export DB_NAME=knex_prepared_test
+
+npm test
+```
+
+### Environment Variables
+
+- `DB_HOST` (default: localhost) - Database host
+- `DB_PORT` (default: 5432) - Database port
+- `DB_USER` (default: postgres) - Database user
+- `DB_PASSWORD` (default: postgres) - Database password
+- `DB_NAME` (default: knex_prepared_test) - Database name
+
+## Benchmarks
+
+Run performance benchmarks to compare prepared statements vs regular queries.
+
+### Setup
+
+```bash
+# Copy the example env file (if not already done)
+cp .env.example .env
+
+# Edit .env to set BENCHMARK_ITERATIONS if desired (default: 1000)
+
+# Start PostgreSQL
+docker run --name postgres-test -e POSTGRES_PASSWORD=postgres -p 5432:5432 -d postgres:16
+```
+
+### Running Benchmarks
+
+```bash
+# Run benchmarks with settings from .env
+npm run benchmark
+
+# Or override iterations via environment variable
+BENCHMARK_ITERATIONS=5000 npm run benchmark
+
+# Stop PostgreSQL when done
+docker stop postgres-test && docker rm postgres-test
+```
+
+### Benchmark Scenarios
 
 The benchmark tests various query types:
 - Simple SELECT by ID
@@ -254,11 +300,7 @@ The benchmark tests various query types:
 - Complex JOINs with multiple conditions
 - Aggregations with GROUP BY
 
-You can customize the number of iterations:
-
-```bash
-BENCHMARK_ITERATIONS=5000 npm run benchmark
-```
+Results show total time, average time per operation, operations per second, and speedup analysis.
 
 ## Contributing
 

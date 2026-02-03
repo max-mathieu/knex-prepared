@@ -5,20 +5,29 @@
  * Performance Benchmark for knex-prepared
  *
  * This script compares the performance of prepared statements vs regular queries.
- * Run with: npx tsx test/benchmark.ts
  *
- * Environment variables (optional):
- * - DB_HOST (default: localhost)
- * - DB_PORT (default: 5432)
- * - DB_USER (default: postgres)
- * - DB_PASSWORD (default: postgres)
- * - DB_NAME (default: knex_prepared_test)
- * - BENCHMARK_ITERATIONS (default: 1000)
+ * Usage:
+ *   npm run benchmark
+ *   or
+ *   npx tsx test/benchmark.ts
+ *
+ * Configuration:
+ *   Create a .env file (copy from .env.example) or set environment variables:
+ *   - DB_HOST (default: localhost)
+ *   - DB_PORT (default: 5432)
+ *   - DB_USER (default: postgres)
+ *   - DB_PASSWORD (default: postgres)
+ *   - DB_NAME (default: knex_prepared_test)
+ *   - BENCHMARK_ITERATIONS (default: 1000)
  */
 
+import { config } from 'dotenv';
 import Knex from 'knex';
 import { knexPrepared } from '../src/index';
 import { setupTestTables, seedTestData, teardownTestTables } from './setup';
+
+// Load environment variables from .env file
+config();
 
 interface BenchmarkResult {
   name: string;

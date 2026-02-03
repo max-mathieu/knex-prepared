@@ -1,6 +1,10 @@
+import { config } from 'dotenv';
 import Knex from 'knex';
 import type { Knex as KnexType } from 'knex';
 import { knexPrepared } from '../src/index';
+
+// Load environment variables from .env file
+config();
 
 /**
  * Test setup utilities for PostgreSQL integration tests.
@@ -9,8 +13,15 @@ import { knexPrepared } from '../src/index';
  *
  * Integration tests require a PostgreSQL database. You can run them in two ways:
  *
- * ### 1. Local PostgreSQL (for development)
- * Start a local PostgreSQL instance and run:
+ * ### 1. Using .env file (recommended for local development)
+ * Create a .env file (copy from .env.example):
+ * ```bash
+ * cp .env.example .env
+ * # Edit .env with your database credentials
+ * npm test
+ * ```
+ *
+ * ### 2. Using environment variables
  * ```bash
  * export DB_HOST=localhost
  * export DB_PORT=5432
@@ -20,21 +31,21 @@ import { knexPrepared } from '../src/index';
  * npm test
  * ```
  *
- * ### 2. Docker (recommended)
+ * ### 3. Docker (recommended for testing)
  * ```bash
  * docker run --name postgres-test -e POSTGRES_PASSWORD=postgres -p 5432:5432 -d postgres:16
  * npm test
  * docker stop postgres-test && docker rm postgres-test
  * ```
  *
- * ### 3. CI (GitHub Actions)
+ * ### 4. CI (GitHub Actions)
  * Tests run automatically in CI with PostgreSQL service container.
  */
 
 /**
  * Creates a test Knex instance connected to PostgreSQL.
  *
- * Connection configuration is loaded from environment variables:
+ * Connection configuration is loaded from environment variables (.env file or process.env):
  * - DB_HOST (default: localhost)
  * - DB_PORT (default: 5432)
  * - DB_USER (default: postgres)
