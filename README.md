@@ -232,6 +232,34 @@ docker stop postgres-test && docker rm postgres-test
 - `DB_PASSWORD` (default: postgres)
 - `DB_NAME` (default: knex_prepared_test)
 
+## Benchmarks
+
+You can run performance benchmarks to compare prepared statements vs regular queries:
+
+```bash
+# Start PostgreSQL
+docker run --name postgres-test -e POSTGRES_PASSWORD=postgres -p 5432:5432 -d postgres:16
+
+# Run benchmarks
+npm run benchmark
+
+# Stop PostgreSQL
+docker stop postgres-test && docker rm postgres-test
+```
+
+The benchmark tests various query types:
+- Simple SELECT by ID
+- SELECT with WHERE clauses
+- Simple JOINs
+- Complex JOINs with multiple conditions
+- Aggregations with GROUP BY
+
+You can customize the number of iterations:
+
+```bash
+BENCHMARK_ITERATIONS=5000 npm run benchmark
+```
+
 ## Contributing
 
 Contributions are welcome! Please:

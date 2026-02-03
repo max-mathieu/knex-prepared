@@ -11,7 +11,6 @@ export default defineConfig({
         'node_modules/',
         'dist/',
         'test/',
-        'benchmark/',
         '**/*.config.ts',
         '**/*.test.ts',
         '**/test-utils.ts',
