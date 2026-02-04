@@ -6,6 +6,9 @@ export const PREPARED_SYMBOL = Symbol('knex-prepared');
 /** Symbol used to store knex-prepared options on Knex instances. */
 export const KNEX_PREPARED_OPTIONS_SYMBOL = Symbol('knex-prepared-options');
 
+/** Map to store prepared statement metadata globally so it can be accessed in client.query() */
+export const GLOBAL_PREPARED_METADATA = new Map<string, PreparedMetadata>();
+
 /**
  * Metadata stored on QueryBuilder instances.
  * - 'auto': Generate name from SQL hash
@@ -47,11 +50,19 @@ export const extendQueryBuilder = (knex: Knex): void => {
       const metadata: PreparedMetadata = { name };
       this[PREPARED_SYMBOL] = metadata;
 
+      // Store in global map with a unique key based on this builder instance
+      // We'll use the builder's toSQL() to generate a key when the query executes
+      // For now, just mark this builder as having prepared metadata
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const self = this as any;
+
+      // Store metadata in both places for redundancy
       const existingContext = self.queryContext() || {};
       const newContext = { ...existingContext, [PREPARED_SYMBOL]: metadata };
       self.queryContext(newContext);
+
+      // Also store a flag that we can check later
+      self._knexPreparedMetadata = metadata;
 
       return this;
     }

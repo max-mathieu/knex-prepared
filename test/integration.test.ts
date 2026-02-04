@@ -420,24 +420,38 @@ describe.skipIf(shouldSkip)('Integration tests with PostgreSQL', () => {
 
   describe('IN clause rewriting', () => {
     it('should rewrite whereIn and return correct results for integers', async () => {
-      await withPreparedStatementsCheck(async (trx, getPreparedStatements) => {
-        const preparedName = getRandomPreparedName('wherein-integers');
-        const users = await trx('users')
-          .prepared(preparedName)
-          .select('*')
-          .whereIn('id', [userIds.user1Id, userIds.user2Id])
-          .orderBy('id');
+      // Test WITHOUT transaction first
+      const preparedName = getRandomPreparedName('wherein-integers');
+      const users = await knex('users')
+        .select('*')
+        .whereIn('id', [userIds.user1Id, userIds.user2Id])
+        .orderBy('id')
+        .prepared(preparedName);
 
-        expect(users).toHaveLength(2);
-        expect(users[0].name).toBe('Alice');
-        expect(users[1].name).toBe('Bob');
+      console.log('Users returned:', users.length);
+      expect(users).toHaveLength(2);
+      expect(users[0].name).toBe('Alice');
+      expect(users[1].name).toBe('Bob');
 
-        // Validate that the prepared statement was created with IN clause
-        const statements = await getPreparedStatements(preparedName);
-        expect(statements).toHaveLength(1);
-        expect(statements[0].statement.toLowerCase()).toContain(' in (');
-        expect(statements[0].statement).toContain('$');
-      });
+      // Check prepared statements
+      const statements = await knex.raw<{ rows: Array<{ name: string; statement: string }> }>(
+        'SELECT name, statement FROM pg_prepared_statements WHERE name = ?',
+        [preparedName]
+      );
+
+      console.log('Statements found:', statements.rows.length);
+      if (statements.rows.length > 0) {
+        console.log('Statement SQL:', statements.rows[0].statement);
+      } else {
+        const allStatements = await knex.raw<{ rows: Array<{ name: string; statement: string }> }>(
+          'SELECT name, statement FROM pg_prepared_statements'
+        );
+        console.log('All prepared statements:', allStatements.rows.map(r => ({ name: r.name, sql: r.statement.substring(0, 80) })));
+      }
+
+      expect(statements.rows).toHaveLength(1);
+      expect(statements.rows[0].statement).toContain('= ANY');
+      expect(statements.rows[0].statement).toContain('::int[]');
     });
 
     it('should rewrite whereNotIn and return correct results for strings', async () => {
@@ -452,10 +466,11 @@ describe.skipIf(shouldSkip)('Integration tests with PostgreSQL', () => {
         expect(users).toHaveLength(1);
         expect(users[0].name).toBe('Charlie');
 
-        // Validate that the prepared statement was created with NOT IN clause
+        // Validate that the prepared statement was created with <> ALL clause (rewritten from NOT IN)
         const statements = await getPreparedStatements(preparedName);
         expect(statements).toHaveLength(1);
-        expect(statements[0].statement.toLowerCase()).toContain('not in');
+        expect(statements[0].statement.toLowerCase()).toContain('<> all');
+        expect(statements[0].statement.toLowerCase()).toContain('::text[]');
         expect(statements[0].statement.toLowerCase()).toContain('"name"');
       });
     });
@@ -514,13 +529,14 @@ describe.skipIf(shouldSkip)('Integration tests with PostgreSQL', () => {
         expect(results[0].name).toBe('Alice');
         expect(results[1].name).toBe('Bob');
 
-        // Validate that the prepared statement was created with JOIN and IN clauses
+        // Validate that the prepared statement was created with JOIN and = ANY clauses (rewritten from IN)
         const statements = await getPreparedStatements(preparedName);
         expect(statements).toHaveLength(1);
         expect(statements[0].statement.toLowerCase()).toContain('join');
-        const inClauses = statements[0].statement.toLowerCase().match(/\s+in\s+\(/g);
-        expect(inClauses).toBeDefined();
-        expect(inClauses!.length).toBeGreaterThanOrEqual(2);
+        // Check for = ANY patterns (rewritten from IN clauses)
+        const anyClauses = statements[0].statement.toLowerCase().match(/=\s*any\s*\(/g);
+        expect(anyClauses).toBeDefined();
+        expect(anyClauses!.length).toBeGreaterThanOrEqual(2);
       });
     });
   });
