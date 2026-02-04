@@ -48,7 +48,9 @@ describe.skipIf(shouldSkip)('Integration tests with PostgreSQL', () => {
   async function withPreparedStatementsCheck<T>(
     callback: (
       trx: typeof knex,
-      getPreparedStatements: (names?: string | string[]) => Promise<Array<{ name: string; statement: string }>>
+      getPreparedStatements: (
+        names?: string | string[]
+      ) => Promise<Array<{ name: string; statement: string }>>
     ) => Promise<T>
   ): Promise<T> {
     return knex.transaction(async (trx) => {
@@ -356,7 +358,11 @@ describe.skipIf(shouldSkip)('Integration tests with PostgreSQL', () => {
       await withPreparedStatementsCheck(async (trx, getPreparedStatements) => {
         // COUNT aggregation
         const preparedName1 = getRandomPreparedName('count-active');
-        const count = await trx('users').prepared(preparedName1).count('* as count').where('active', true).first();
+        const count = await trx('users')
+          .prepared(preparedName1)
+          .count('* as count')
+          .where('active', true)
+          .first();
         expect(count?.count).toBe('2');
 
         // GROUP BY
@@ -375,8 +381,8 @@ describe.skipIf(shouldSkip)('Integration tests with PostgreSQL', () => {
         // Validate that prepared statements were created
         const statements = await getPreparedStatements([preparedName1, preparedName2]);
         expect(statements).toHaveLength(2);
-        expect(statements.some(s => s.statement.toLowerCase().includes('count'))).toBe(true);
-        expect(statements.some(s => s.statement.toLowerCase().includes('group by'))).toBe(true);
+        expect(statements.some((s) => s.statement.toLowerCase().includes('count'))).toBe(true);
+        expect(statements.some((s) => s.statement.toLowerCase().includes('group by'))).toBe(true);
       });
     });
 
@@ -406,7 +412,10 @@ describe.skipIf(shouldSkip)('Integration tests with PostgreSQL', () => {
         const subquery = trx('posts').select('user_id').where('published', true).groupBy('user_id');
 
         const preparedName = getRandomPreparedName('subquery-test');
-        const results = await trx('users').prepared(preparedName).select('*').whereIn('id', subquery);
+        const results = await trx('users')
+          .prepared(preparedName)
+          .select('*')
+          .whereIn('id', subquery);
 
         expect(results).toHaveLength(2);
 
@@ -438,19 +447,21 @@ describe.skipIf(shouldSkip)('Integration tests with PostgreSQL', () => {
         expect(users[1].name).toBe('Bob');
 
         // Check prepared statements
-        const statements = await knexWithRewrite.raw<{ rows: Array<{ name: string; statement: string }> }>(
-          'SELECT name, statement FROM pg_prepared_statements WHERE name = ?',
-          [preparedName]
-        );
+        const statements = await knexWithRewrite.raw<{
+          rows: Array<{ name: string; statement: string }>;
+        }>('SELECT name, statement FROM pg_prepared_statements WHERE name = ?', [preparedName]);
 
         console.log('Statements found:', statements.rows.length);
         if (statements.rows.length > 0) {
           console.log('Statement SQL:', statements.rows[0].statement);
         } else {
-          const allStatements = await knexWithRewrite.raw<{ rows: Array<{ name: string; statement: string }> }>(
-            'SELECT name, statement FROM pg_prepared_statements'
+          const allStatements = await knexWithRewrite.raw<{
+            rows: Array<{ name: string; statement: string }>;
+          }>('SELECT name, statement FROM pg_prepared_statements');
+          console.log(
+            'All prepared statements:',
+            allStatements.rows.map((r) => ({ name: r.name, sql: r.statement.substring(0, 80) }))
           );
-          console.log('All prepared statements:', allStatements.rows.map(r => ({ name: r.name, sql: r.statement.substring(0, 80) })));
         }
 
         expect(statements.rows).toHaveLength(1);

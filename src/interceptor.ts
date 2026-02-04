@@ -74,7 +74,6 @@ const generatePreparedStatementName = (
   return `${options.autoPrefix}-${hash.substring(0, options.autoHashLength)}`;
 };
 
-
 interface InClauseMatch {
   fullMatch: string;
   column: string;
@@ -269,8 +268,8 @@ export const attachPreparedStatementHook = (knex: Knex): void => {
         ) {
           console.warn(
             '[knex-prepared] Warning: Prepared statement with IN/NOT IN clause detected. ' +
-            'Prepared statements with variable-length parameter lists can lead to poor plan caching. ' +
-            'Consider using rewriteInClauses option or rewriting to = ANY($1) / <> ALL($1) manually.'
+              'Prepared statements with variable-length parameter lists can lead to poor plan caching. ' +
+              'Consider using rewriteInClauses option or rewriting to = ANY($1) / <> ALL($1) manually.'
           );
         }
 
@@ -285,9 +284,10 @@ export const attachPreparedStatementHook = (knex: Knex): void => {
         // Generate or use prepared statement name (from rewritten SQL)
         // Only store if prepared statements are enabled (name is not null)
         if (metadata.name !== null) {
-          const preparedName = metadata.name === 'auto'
-            ? generatePreparedStatementName(rewrittenSql, options)
-            : metadata.name;
+          const preparedName =
+            metadata.name === 'auto'
+              ? generatePreparedStatementName(rewrittenSql, options)
+              : metadata.name;
 
           // Store for connection.query() to pick up
           // Key is the ORIGINAL SQL (what connection.query() will receive)
@@ -331,8 +331,8 @@ export const attachPreparedStatementHook = (knex: Knex): void => {
         ) {
           console.warn(
             '[knex-prepared] Warning: Prepared statement with IN/NOT IN clause detected. ' +
-            'Prepared statements with variable-length parameter lists can lead to poor plan caching. ' +
-            'Consider using rewriteInClauses option or rewriting to = ANY($1) / <> ALL($1) manually.'
+              'Prepared statements with variable-length parameter lists can lead to poor plan caching. ' +
+              'Consider using rewriteInClauses option or rewriting to = ANY($1) / <> ALL($1) manually.'
           );
         }
 
