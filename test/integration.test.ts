@@ -353,6 +353,74 @@ describe.skipIf(shouldSkip)('Integration tests with PostgreSQL', () => {
     });
   });
 
+  describe('IN clause rewriting', () => {
+    it('should rewrite whereIn and return correct results for integers', async () => {
+      const users = await knex('users')
+        .prepared()
+        .select('*')
+        .whereIn('id', [userIds.user1Id, userIds.user2Id])
+        .orderBy('id');
+
+      expect(users).toHaveLength(2);
+      expect(users[0].name).toBe('Alice');
+      expect(users[1].name).toBe('Bob');
+    });
+
+    it('should rewrite whereNotIn and return correct results for strings', async () => {
+      const users = await knex('users')
+        .prepared()
+        .select('*')
+        .whereNotIn('name', ['Alice', 'Bob'])
+        .orderBy('id');
+
+      expect(users).toHaveLength(1);
+      expect(users[0].name).toBe('Charlie');
+    });
+
+    it('should handle multiple IN clauses in one query', async () => {
+      const posts = await knex('posts')
+        .prepared()
+        .select('*')
+        .whereIn('user_id', [userIds.user1Id, userIds.user2Id])
+        .whereIn('published', [true])
+        .orderBy('id');
+
+      expect(posts).toHaveLength(2);
+    });
+
+    it('should work correctly with rewriteInClauses disabled', async () => {
+      // Create a new knex instance with rewriting disabled
+      const { createTestKnex: createTestKnexOriginal } = await import('./setup');
+      const knexNoRewrite = createTestKnexOriginal({ rewriteInClauses: false });
+
+      const users = await knexNoRewrite('users')
+        .prepared()
+        .select('*')
+        .whereIn('id', [userIds.user1Id, userIds.user2Id])
+        .orderBy('id');
+
+      expect(users).toHaveLength(2);
+      expect(users[0].name).toBe('Alice');
+      expect(users[1].name).toBe('Bob');
+
+      await knexNoRewrite.destroy();
+    });
+
+    it('should handle complex query with joins and IN clauses', async () => {
+      const results = await knex('users')
+        .prepared()
+        .select('users.name', 'posts.title')
+        .join('posts', 'users.id', 'posts.user_id')
+        .whereIn('users.id', [userIds.user1Id, userIds.user2Id])
+        .whereIn('posts.published', [true])
+        .orderBy('users.id');
+
+      expect(results).toHaveLength(2);
+      expect(results[0].name).toBe('Alice');
+      expect(results[1].name).toBe('Bob');
+    });
+  });
+
   describe('Error handling', () => {
     it('should handle query errors appropriately', async () => {
       await expect(knex.prepared('non_existent_table').select('*')).rejects.toThrow();

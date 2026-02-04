@@ -2,6 +2,7 @@ import { config } from 'dotenv';
 import Knex from 'knex';
 import type { Knex as KnexType } from 'knex';
 import { knexPrepared } from '../src/index';
+import type { KnexPreparedOptions } from '../src/types';
 
 // Load environment variables from .env file
 config();
@@ -52,9 +53,10 @@ config();
  * - DB_PASSWORD (default: postgres)
  * - DB_NAME (default: knex_prepared_test)
  *
+ * @param options - Optional knex-prepared configuration options
  * @returns A Knex instance with prepared statement support
  */
-export function createTestKnex() {
+export function createTestKnex(options?: KnexPreparedOptions) {
   const baseKnex = Knex({
     client: 'pg',
     connection: {
@@ -70,7 +72,7 @@ export function createTestKnex() {
     },
   });
 
-  return knexPrepared(baseKnex);
+  return knexPrepared(baseKnex, options);
 }
 
 /**
