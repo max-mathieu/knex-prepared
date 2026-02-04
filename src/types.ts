@@ -17,10 +17,23 @@ export interface KnexPreparedOptions {
 
   /**
    * Whether to rewrite IN clauses to = ANY() for better prepared statement caching.
-   * Only applies to PostgreSQL. Defaults to true for PostgreSQL clients.
-   * @default true (PostgreSQL), false (others)
+   * Only applies to PostgreSQL.
+   * @default false
    */
   rewriteInClauses?: boolean;
+
+  /**
+   * Automatically prepare SELECT queries without calling .prepared().
+   * @default false
+   */
+  autoNameSelects?: boolean;
+
+  /**
+   * Disable warnings for prepared queries with IN clauses when rewriteInClauses is false.
+   * Defaults to true in production, false otherwise.
+   * @default process.env.NODE_ENV === 'production'
+   */
+  disableInClausesWarning?: boolean;
 }
 
 /**
@@ -30,4 +43,6 @@ export interface ResolvedKnexPreparedOptions {
   autoPrefix: string;
   autoHashLength: number;
   rewriteInClauses: boolean;
+  autoNameSelects: boolean;
+  disableInClausesWarning: boolean;
 }

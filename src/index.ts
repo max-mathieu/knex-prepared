@@ -6,24 +6,16 @@ import { wrapTransactionMethod } from './transaction';
 import type { KnexPreparedOptions, ResolvedKnexPreparedOptions } from './types';
 
 /**
- * Detects if the Knex client is PostgreSQL.
- */
-const isPostgresClient = (knex: Knex): boolean => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const client = (knex as any).client;
-  return client?.driverName === 'pg';
-};
-
-/**
  * Resolves options with defaults and validates them.
  */
 const resolveOptions = (
-  options: KnexPreparedOptions | undefined,
-  knex: Knex
+  options: KnexPreparedOptions | undefined
 ): ResolvedKnexPreparedOptions => {
   const autoPrefix = options?.autoPrefix ?? 'auto';
   const autoHashLength = options?.autoHashLength ?? 16;
-  const rewriteInClauses = options?.rewriteInClauses ?? isPostgresClient(knex);
+  const rewriteInClauses = options?.rewriteInClauses ?? false;
+  const autoNameSelects = options?.autoNameSelects ?? false;
+  const disableInClausesWarning = options?.disableInClausesWarning ?? (process.env.NODE_ENV === 'production');
 
   // Validate autoPrefix
   if (typeof autoPrefix !== 'string' || autoPrefix.length === 0) {
@@ -44,6 +36,8 @@ const resolveOptions = (
     autoPrefix,
     autoHashLength,
     rewriteInClauses,
+    autoNameSelects,
+    disableInClausesWarning,
   };
 };
 
@@ -55,7 +49,7 @@ export const knexPrepared = <TKnex extends Knex = Knex>(
   knex: TKnex,
   options?: KnexPreparedOptions
 ): TKnex & { prepared: (tableName: string) => Knex.QueryBuilder } => {
-  const resolvedOptions = resolveOptions(options, knex);
+  const resolvedOptions = resolveOptions(options);
 
   // Store options on knex instance
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

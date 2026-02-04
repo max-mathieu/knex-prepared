@@ -114,10 +114,11 @@ describe('knexPrepared options', () => {
       expect(options).toBeDefined();
       expect(options!.autoPrefix).toBe('auto');
       expect(options!.autoHashLength).toBe(16);
-      expect(options!.rewriteInClauses).toBe(true);
+      expect(options!.rewriteInClauses).toBe(false);
+      expect(options!.autoNameSelects).toBe(false);
     });
 
-    it('should disable rewriteInClauses for non-PostgreSQL clients', () => {
+    it('should use default options for non-PostgreSQL clients', () => {
       const knex = knexPrepared(Knex({ client: 'sqlite3' }));
       const options = getOptions(knex);
 
@@ -125,6 +126,7 @@ describe('knexPrepared options', () => {
       expect(options!.autoPrefix).toBe('auto');
       expect(options!.autoHashLength).toBe(16);
       expect(options!.rewriteInClauses).toBe(false);
+      expect(options!.autoNameSelects).toBe(false);
     });
   });
 
@@ -211,23 +213,21 @@ describe('knexPrepared options', () => {
     });
   });
 
-  describe('client detection', () => {
-    it('should detect pg client', () => {
-      const knex = knexPrepared(Knex({ client: 'pg' }));
-      const options = getOptions(knex);
+  describe('rewriteInClauses option', () => {
+    it('should default to false for all clients', () => {
+      const pgKnex = knexPrepared(Knex({ client: 'pg' }));
+      const pgOptions = getOptions(pgKnex);
+      expect(pgOptions!.rewriteInClauses).toBe(false);
 
-      expect(options!.rewriteInClauses).toBe(true);
+      const sqliteKnex = knexPrepared(Knex({ client: 'sqlite3' }));
+      const sqliteOptions = getOptions(sqliteKnex);
+      expect(sqliteOptions!.rewriteInClauses).toBe(false);
     });
 
-    it('should detect non-pg clients', () => {
-      const clients = ['mysql', 'mysql2', 'sqlite3', 'better-sqlite3', 'mssql', 'oracledb'];
-
-      clients.forEach((client) => {
-        const knex = knexPrepared(Knex({ client }));
-        const options = getOptions(knex);
-
-        expect(options!.rewriteInClauses).toBe(false);
-      });
+    it('should allow explicit enabling of rewriteInClauses', () => {
+      const knex = knexPrepared(Knex({ client: 'pg' }), { rewriteInClauses: true });
+      const options = getOptions(knex);
+      expect(options!.rewriteInClauses).toBe(true);
     });
   });
 });
