@@ -23,6 +23,37 @@ interface KnexWithOptions extends Knex {
   [KNEX_PREPARED_OPTIONS_SYMBOL]?: ResolvedKnexPreparedOptions;
 }
 
+interface KnexClient {
+  query: (connection: Connection, obj: QueryObject) => Promise<unknown>;
+  acquireConnection: (...args: unknown[]) => Promise<Connection>;
+}
+
+interface QueryObject {
+  sql: string;
+  bindings: unknown[];
+  queryContext?: {
+    [PREPARED_SYMBOL]?: PreparedMetadata;
+  };
+  options?: {
+    name?: string;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
+
+interface Connection {
+  query: (config: PgQueryConfig, values?: unknown, callback?: unknown) => unknown;
+  __knexPreparedWrapped?: boolean;
+  [key: string]: unknown;
+}
+
+interface PgQueryConfig {
+  text: string;
+  values?: unknown[];
+  name?: string;
+  [key: string]: unknown;
+}
+
 // Store rewrite instructions indexed by original SQL (before pg driver processes it)
 // The key is the SQL after Knex formatting but before pg driver converts ? to $n
 const pendingRewrites = new Map<
@@ -230,14 +261,12 @@ export const attachPreparedStatementHook = (knex: Knex): void => {
     }
   });
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const client = (knex as any).client;
+  const client = (knex as unknown as { client: KnexClient }).client;
   const originalQuery = client.query.bind(client);
   const originalAcquireConnection = client.acquireConnection.bind(client);
 
   // Helper function to process query objects (for non-transaction queries)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const processQuery = (obj: any) => {
+  const processQuery = (obj: QueryObject): void => {
     const metadata = obj.queryContext?.[PREPARED_SYMBOL];
 
     if (metadata && typeof obj.sql === 'string') {
@@ -256,36 +285,35 @@ export const attachPreparedStatementHook = (knex: Knex): void => {
       obj.bindings = bindings;
 
       // Inject prepared statement name (computed from rewritten SQL)
-      if (metadata.name !== 'auto') {
-        obj.options = obj.options || {};
-        obj.options.name = metadata.name;
-      } else {
-        // Generate name from rewritten SQL
-        const preparedName = generatePreparedStatementName(sql, options);
-        obj.options = obj.options || {};
-        obj.options.name = preparedName;
+      if (metadata.name !== null) {
+        if (metadata.name !== 'auto') {
+          obj.options = obj.options || {};
+          obj.options.name = metadata.name;
+        } else {
+          // Generate name from rewritten SQL
+          const preparedName = generatePreparedStatementName(sql, options);
+          obj.options = obj.options || {};
+          obj.options.name = preparedName;
+        }
       }
     }
   };
 
   // Wrap client.query() for non-transaction queries
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  client.query = function (connection: any, obj: any) {
+  client.query = function (connection: Connection, obj: QueryObject) {
     processQuery(obj);
     return originalQuery(connection, obj);
   };
 
   // Wrap acquireConnection to patch connections for transactions
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  client.acquireConnection = async function (...args: any[]) {
+  client.acquireConnection = async function (...args: unknown[]) {
     const connection = await originalAcquireConnection(...args);
 
     // Wrap the connection's query method if not already wrapped
     if (connection && !connection.__knexPreparedWrapped) {
       const originalConnectionQuery = connection.query.bind(connection);
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      connection.query = function (config: any, values?: any, callback?: any) {
+      connection.query = function (config: PgQueryConfig, values?: unknown, callback?: unknown) {
         // For pg driver, config is { text: sql, values: bindings, ... }
         if (config && typeof config === 'object' && config.text) {
           const originalSql = config.text;
