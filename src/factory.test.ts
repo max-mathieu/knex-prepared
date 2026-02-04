@@ -48,7 +48,7 @@ describe('addPreparedFactory', () => {
     const query = knex.prepared('users').prepared('custom-name');
 
     const metadata = getMetadata(query);
-    expect(metadata.name).toBe('custom-name');
+    expect(metadata!.name).toBe('custom-name');
   });
 
   it('should allow disabling prepared statements after factory call', () => {

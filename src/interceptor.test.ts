@@ -4,6 +4,7 @@ import { attachPreparedStatementHook } from './interceptor';
 import { extendQueryBuilder, PREPARED_SYMBOL } from './query-builder';
 import type { PreparedMetadata } from './query-builder';
 import { getKnexEvents } from './test-utils';
+import type { QueryData } from './test-utils';
 
 describe('attachPreparedStatementHook', () => {
   let knex: ReturnType<typeof Knex>;
@@ -20,7 +21,7 @@ describe('attachPreparedStatementHook', () => {
   });
 
   it('should inject auto-generated name when metadata.name is "auto"', () => {
-    const queryData = {
+    const queryData: QueryData = {
       sql: 'SELECT * FROM users WHERE id = ?',
       bindings: [1],
       __knexQueryBuilder: {
@@ -36,7 +37,7 @@ describe('attachPreparedStatementHook', () => {
   });
 
   it('should inject custom name when metadata.name is a string', () => {
-    const queryData = {
+    const queryData: QueryData = {
       sql: 'SELECT * FROM users',
       bindings: [],
       __knexQueryBuilder: {
@@ -50,7 +51,7 @@ describe('attachPreparedStatementHook', () => {
   });
 
   it('should not inject name when metadata.name is null', () => {
-    const queryData = {
+    const queryData: QueryData = {
       sql: 'SELECT * FROM users',
       bindings: [],
       __knexQueryBuilder: {
@@ -64,7 +65,7 @@ describe('attachPreparedStatementHook', () => {
   });
 
   it('should not inject name when no metadata exists', () => {
-    const queryData = {
+    const queryData: QueryData = {
       sql: 'SELECT * FROM users',
       bindings: [],
       __knexQueryBuilder: {},
@@ -76,7 +77,7 @@ describe('attachPreparedStatementHook', () => {
   });
 
   it('should not inject name when no builder is available', () => {
-    const queryData = {
+    const queryData: QueryData = {
       sql: 'SELECT * FROM users',
       bindings: [],
     };
@@ -89,7 +90,7 @@ describe('attachPreparedStatementHook', () => {
   it('should handle queries with same SQL getting same name', () => {
     const sql = 'SELECT * FROM users WHERE active = ?';
 
-    const queryData1 = {
+    const queryData1: QueryData = {
       sql,
       bindings: [true],
       __knexQueryBuilder: {
@@ -97,7 +98,7 @@ describe('attachPreparedStatementHook', () => {
       },
     };
 
-    const queryData2 = {
+    const queryData2: QueryData = {
       sql,
       bindings: [false],
       __knexQueryBuilder: {
@@ -113,7 +114,7 @@ describe('attachPreparedStatementHook', () => {
   });
 
   it('should handle queries with different SQL getting different names', () => {
-    const queryData1 = {
+    const queryData1: QueryData = {
       sql: 'SELECT * FROM users',
       bindings: [],
       __knexQueryBuilder: {
@@ -121,7 +122,7 @@ describe('attachPreparedStatementHook', () => {
       },
     };
 
-    const queryData2 = {
+    const queryData2: QueryData = {
       sql: 'SELECT * FROM posts',
       bindings: [],
       __knexQueryBuilder: {
@@ -136,7 +137,7 @@ describe('attachPreparedStatementHook', () => {
   });
 
   it('should handle missing SQL gracefully for auto-generation', () => {
-    const queryData = {
+    const queryData: Partial<QueryData> = {
       bindings: [],
       __knexQueryBuilder: {
         [PREPARED_SYMBOL]: { name: 'auto' } as PreparedMetadata,
@@ -162,7 +163,7 @@ describe('attachPreparedStatementHook', () => {
       __knexQueryBuilder: {
         [PREPARED_SYMBOL]: { name: 'auto' } as PreparedMetadata,
       },
-    };
+    } as unknown as QueryData;
 
     expect(() => {
       (knex as unknown as { emit: (event: string, data: unknown) => void }).emit(

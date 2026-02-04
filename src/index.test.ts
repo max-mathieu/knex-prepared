@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import Knex from 'knex';
 import { knexPrepared } from './index';
 import { getMetadata, getKnexEvents } from './test-utils';
+import type { QueryData } from './test-utils';
 
 describe('knexPrepared integration', () => {
   it('should initialize all features in one call', () => {
@@ -27,7 +28,7 @@ describe('knexPrepared integration', () => {
 
     const metadata = getMetadata(query);
     expect(metadata).toBeDefined();
-    expect(metadata.name).toBe('auto');
+    expect(metadata!.name).toBe('auto');
   });
 
   it('should work with chainable method', () => {
@@ -36,7 +37,7 @@ describe('knexPrepared integration', () => {
 
     const metadata = getMetadata(query);
     expect(metadata).toBeDefined();
-    expect(metadata.name).toBe('auto');
+    expect(metadata!.name).toBe('auto');
   });
 
   it('should work with custom names', () => {
@@ -45,7 +46,7 @@ describe('knexPrepared integration', () => {
 
     const metadata = getMetadata(query);
     expect(metadata).toBeDefined();
-    expect(metadata.name).toBe('my-custom-name');
+    expect(metadata!.name).toBe('my-custom-name');
   });
 
   it('should work with disabled prepared statements', () => {
@@ -54,7 +55,7 @@ describe('knexPrepared integration', () => {
 
     const metadata = getMetadata(query);
     expect(metadata).toBeDefined();
-    expect(metadata.name).toBeNull();
+    expect(metadata!.name).toBeNull();
   });
 
   it('should allow combining factory and chainable methods', () => {
@@ -83,7 +84,7 @@ describe('knexPrepared integration', () => {
       .offset(20);
 
     const metadata = getMetadata(query);
-    expect(metadata.name).toBe('auto');
+    expect(metadata!.name).toBe('auto');
 
     const sql = query.toSQL();
     expect(sql.sql).toContain('select');
@@ -114,9 +115,9 @@ describe('knexPrepared integration', () => {
   it('should emit query events with prepared statement names', () => {
     const knex = knexPrepared(Knex({ client: 'pg' }));
 
-    let capturedQueryData: unknown = null;
+    let capturedQueryData: QueryData | null = null;
     knex.on('query', (data) => {
-      capturedQueryData = data;
+      capturedQueryData = data as QueryData;
     });
 
     const query = knex.prepared('users').select('*');
@@ -130,8 +131,8 @@ describe('knexPrepared integration', () => {
     });
 
     expect(capturedQueryData).not.toBeNull();
-    expect(capturedQueryData.name).toBeDefined();
-    expect(capturedQueryData.name).toMatch(/^auto-[0-9a-f]{16}$/);
+    expect(capturedQueryData!.name).toBeDefined();
+    expect(capturedQueryData!.name).toMatch(/^auto-[0-9a-f]{16}$/);
   });
 
   it('should preserve Knex instance type and methods', () => {
@@ -152,6 +153,6 @@ describe('knexPrepared integration', () => {
 
     expect(knex.prepared).toBeDefined();
     const query = knex.prepared('users').select('*');
-    expect(getMetadata(query).name).toBe('auto');
+    expect(getMetadata(query)!.name).toBe('auto');
   });
 });

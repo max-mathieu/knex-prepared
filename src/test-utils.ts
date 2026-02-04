@@ -10,6 +10,14 @@ export interface QueryBuilderWithMetadata extends Knex.QueryBuilder {
   [PREPARED_SYMBOL]?: PreparedMetadata;
 }
 
+export interface QueryData {
+  sql: string;
+  bindings: unknown[];
+  name?: string;
+  __knexQueryBuilder?: Partial<QueryBuilderWithMetadata>;
+  [key: string]: unknown;
+}
+
 export function getMetadata(query: Knex.QueryBuilder): PreparedMetadata | undefined {
   return (query as QueryBuilderWithMetadata)[PREPARED_SYMBOL];
 }

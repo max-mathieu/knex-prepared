@@ -31,7 +31,7 @@ describe('extendQueryBuilder', () => {
 
     const metadata = getMetadata(query);
     expect(metadata).toBeDefined();
-    expect(metadata.name).toBe('auto');
+    expect(metadata!.name).toBe('auto');
   });
 
   it('should store "auto" metadata when called with true', () => {
@@ -40,7 +40,7 @@ describe('extendQueryBuilder', () => {
 
     const metadata = getMetadata(query);
     expect(metadata).toBeDefined();
-    expect(metadata.name).toBe('auto');
+    expect(metadata!.name).toBe('auto');
   });
 
   it('should store null metadata when called with false', () => {
@@ -49,7 +49,7 @@ describe('extendQueryBuilder', () => {
 
     const metadata = getMetadata(query);
     expect(metadata).toBeDefined();
-    expect(metadata.name).toBeNull();
+    expect(metadata!.name).toBeNull();
   });
 
   it('should store custom name when called with string', () => {
@@ -58,7 +58,7 @@ describe('extendQueryBuilder', () => {
 
     const metadata = getMetadata(query);
     expect(metadata).toBeDefined();
-    expect(metadata.name).toBe('custom-statement-name');
+    expect(metadata!.name).toBe('custom-statement-name');
   });
 
   it('should allow chaining with other query builder methods', () => {
@@ -66,7 +66,7 @@ describe('extendQueryBuilder', () => {
 
     expect(query).toBeDefined();
     const metadata = getMetadata(query);
-    expect(metadata.name).toBe('test');
+    expect(metadata!.name).toBe('test');
   });
 
   it('should work with different query types', () => {
