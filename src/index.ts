@@ -9,33 +9,33 @@ import type { KnexPreparedOptions, ResolvedKnexPreparedOptions } from './types';
  * Resolves options with defaults and validates them.
  */
 const resolveOptions = (options: KnexPreparedOptions | undefined): ResolvedKnexPreparedOptions => {
-  const autoPrefix = options?.autoPrefix ?? 'auto';
-  const autoHashLength = options?.autoHashLength ?? 16;
+  const autoNamePrefix = options?.autoNamePrefix ?? 'auto';
+  const autoNameHashLength = options?.autoNameHashLength ?? 16;
   const rewriteInClauses = options?.rewriteInClauses ?? false;
-  const autoNameSelects = options?.autoNameSelects ?? false;
+  const autoNameAllSelects = options?.autoNameAllSelects ?? false;
   const disableInClausesWarning =
     options?.disableInClausesWarning ?? process.env.NODE_ENV === 'production';
 
-  // Validate autoPrefix
-  if (typeof autoPrefix !== 'string' || autoPrefix.length === 0) {
-    throw new Error('autoPrefix must be a non-empty string');
+  // Validate autoNamePrefix
+  if (typeof autoNamePrefix !== 'string' || autoNamePrefix.length === 0) {
+    throw new Error('autoNamePrefix must be a non-empty string');
   }
 
-  // Validate autoHashLength
+  // Validate autoNameHashLength
   if (
-    typeof autoHashLength !== 'number' ||
-    autoHashLength < 1 ||
-    autoHashLength > 64 ||
-    !Number.isInteger(autoHashLength)
+    typeof autoNameHashLength !== 'number' ||
+    autoNameHashLength < 1 ||
+    autoNameHashLength > 64 ||
+    !Number.isInteger(autoNameHashLength)
   ) {
-    throw new Error('autoHashLength must be an integer between 1 and 64');
+    throw new Error('autoNameHashLength must be an integer between 1 and 64');
   }
 
   return {
-    autoPrefix,
-    autoHashLength,
+    autoNamePrefix,
+    autoNameHashLength,
     rewriteInClauses,
-    autoNameSelects,
+    autoNameAllSelects,
     disableInClausesWarning,
   };
 };

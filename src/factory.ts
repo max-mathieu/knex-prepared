@@ -1,5 +1,5 @@
 import type { Knex } from 'knex';
-import { PREPARED_SYMBOL, type PreparedMetadata } from './query-builder';
+import { setQueryBuilderMetadata } from './query-builder';
 
 /** QueryBuilder with prepared statement metadata pre-configured. */
 export type PreparedQueryBuilder<
@@ -22,15 +22,10 @@ export const addPreparedFactory = (knex: Knex): Knex & { prepared: PreparedFacto
     tableName: string
   ): PreparedQueryBuilder<TRecord, TResult> {
     const builder = knex<TRecord, TResult>(tableName);
-    (builder as unknown as Record<symbol, PreparedMetadata>)[PREPARED_SYMBOL] = { name: 'auto' };
+    const metadata = { name: 'auto' as const };
 
-    // Store metadata in queryContext so it's available in the query event
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const self = builder as any;
-    const metadata: PreparedMetadata = { name: 'auto' };
-    const existingContext = self.queryContext() || {};
-    const newContext = { ...existingContext, [PREPARED_SYMBOL]: metadata };
-    self.queryContext(newContext);
+    // Type assertion needed to access internal QueryBuilder methods
+    setQueryBuilderMetadata(builder as never, metadata);
 
     return builder as PreparedQueryBuilder<TRecord, TResult>;
   };

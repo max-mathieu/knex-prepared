@@ -71,7 +71,7 @@ const generatePreparedStatementName = (
 ): string => {
   const normalized = sql.trim().replace(/\s+/g, ' ');
   const hash = createHash('sha256').update(normalized).digest('hex');
-  return `${options.autoPrefix}-${hash.substring(0, options.autoHashLength)}`;
+  return `${options.autoNamePrefix}-${hash.substring(0, options.autoNameHashLength)}`;
 };
 
 interface InClauseMatch {
@@ -247,7 +247,7 @@ const processQueryMetadata = (
   useDollarNotation: boolean
 ): ProcessedQuery | null => {
   // Auto-name SELECT queries if enabled and not already prepared
-  if (!metadata && options.autoNameSelects && isSelectQuery(sql)) {
+  if (!metadata && options.autoNameAllSelects && isSelectQuery(sql)) {
     metadata = { name: 'auto' };
   }
 
@@ -262,6 +262,7 @@ const processQueryMetadata = (
     !options.disableInClausesWarning &&
     hasInClause(sql)
   ) {
+    // eslint-disable-next-line no-console
     console.warn(
       '[knex-prepared] Warning: Prepared statement with IN/NOT IN clause detected. ' +
         'Prepared statements with variable-length parameter lists can lead to poor plan caching. ' +
@@ -344,38 +345,32 @@ export const attachPreparedStatementHook = (knex: Knex): void => {
   const originalQuery = client.query.bind(client);
   const originalAcquireConnection = client.acquireConnection.bind(client);
 
-  // Helper function to process query objects (for non-transaction queries)
-  const processQuery = (obj: QueryObject): void => {
-    if (typeof obj.sql !== 'string') {
-      return;
-    }
-
-    const metadata = obj.queryContext?.[PREPARED_SYMBOL];
-    const bindings = obj.bindings || [];
-
-    // Process query with ? notation (pre-driver)
-    const processed = processQueryMetadata(metadata, obj.sql, bindings, options, false);
-
-    if (processed) {
-      // Apply rewritten SQL and bindings
-      obj.sql = processed.sql;
-      obj.bindings = processed.bindings;
-
-      // Inject prepared statement name
-      if (processed.preparedName) {
-        obj.options = obj.options || {};
-        obj.options.name = processed.preparedName;
-      }
-
-      // Ensure queryContext is defined for later access
-      obj.queryContext = obj.queryContext || ({} as QueryObject['queryContext']);
-      obj.queryContext![PREPARED_SYMBOL] = processed.metadata;
-    }
-  };
-
   // Wrap client.query() for non-transaction queries
   client.query = function (connection: Connection, obj: QueryObject) {
-    processQuery(obj);
+    if (typeof obj.sql === 'string') {
+      const metadata = obj.queryContext?.[PREPARED_SYMBOL];
+      const bindings = obj.bindings || [];
+
+      // Process query with ? notation (pre-driver)
+      const processed = processQueryMetadata(metadata, obj.sql, bindings, options, false);
+
+      if (processed) {
+        // Apply rewritten SQL and bindings
+        obj.sql = processed.sql;
+        obj.bindings = processed.bindings;
+
+        // Inject prepared statement name
+        if (processed.preparedName) {
+          obj.options = obj.options || {};
+          obj.options.name = processed.preparedName;
+        }
+
+        // Ensure queryContext is defined for later access
+        obj.queryContext = obj.queryContext || ({} as QueryObject['queryContext']);
+        obj.queryContext![PREPARED_SYMBOL] = processed.metadata;
+      }
+    }
+
     return originalQuery(connection, obj);
   };
 

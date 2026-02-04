@@ -101,10 +101,10 @@ describe.skipIf(shouldSkip)('Integration tests with PostgreSQL', () => {
     });
   });
 
-  describe('autoNameSelects option', () => {
+  describe('autoNameAllSelects option', () => {
     it('should automatically prepare SELECT queries when enabled', async () => {
-      // Create knex instance with autoNameSelects enabled
-      const knexAutoName = createTestKnex({ autoNameSelects: true });
+      // Create knex instance with autoNameAllSelects enabled
+      const knexAutoName = createTestKnex({ autoNameAllSelects: true });
 
       try {
         await knexAutoName.transaction(async (trx) => {
@@ -123,9 +123,10 @@ describe.skipIf(shouldSkip)('Integration tests with PostgreSQL', () => {
 
           expect(statements.rows.length).toBeGreaterThan(0);
           // Verify the prepared statement contains our query
-          const ourStatement = statements.rows.find(s =>
-            s.statement.toLowerCase().includes('"users"') &&
-            s.statement.toLowerCase().includes('"active"')
+          const ourStatement = statements.rows.find(
+            (s) =>
+              s.statement.toLowerCase().includes('"users"') &&
+              s.statement.toLowerCase().includes('"active"')
           );
           expect(ourStatement).toBeDefined();
           expect(ourStatement!.name).toMatch(/^auto-[0-9a-f]{16}$/);
@@ -135,53 +136,55 @@ describe.skipIf(shouldSkip)('Integration tests with PostgreSQL', () => {
       }
     });
 
-    it('should not auto-prepare non-SELECT queries even with autoNameSelects enabled', async () => {
-      // Create knex instance with autoNameSelects enabled
-      const knexAutoName = createTestKnex({ autoNameSelects: true });
+    it('should not auto-prepare non-SELECT queries even with autoNameAllSelects enabled', async () => {
+      // Create knex instance with autoNameAllSelects enabled
+      const knexAutoName = createTestKnex({ autoNameAllSelects: true });
 
       try {
-        await knexAutoName.transaction(async (trx) => {
-          // Get prepared statements before the INSERT
-          const beforeStatements = await trx.raw<{ rows: Array<{ name: string; statement: string }> }>(
-            'SELECT name, statement FROM pg_prepared_statements'
-          );
-          const beforeCount = beforeStatements.rows.length;
+        await knexAutoName
+          .transaction(async (trx) => {
+            // Get prepared statements before the INSERT
+            const beforeStatements = await trx.raw<{
+              rows: Array<{ name: string; statement: string }>;
+            }>('SELECT name, statement FROM pg_prepared_statements');
+            const beforeCount = beforeStatements.rows.length;
 
-          // Execute an INSERT query WITHOUT calling .prepared()
-          const [newUser] = await trx('users')
-            .insert({
-              name: 'TestUser',
-              email: 'test-auto-name@example.com',
-              active: true,
-            })
-            .returning('*');
+            // Execute an INSERT query WITHOUT calling .prepared()
+            const [newUser] = await trx('users')
+              .insert({
+                name: 'TestUser',
+                email: 'test-auto-name@example.com',
+                active: true,
+              })
+              .returning('*');
 
-          expect(newUser.name).toBe('TestUser');
+            expect(newUser.name).toBe('TestUser');
 
-          // Verify no new prepared statement was created for INSERT
-          const afterStatements = await trx.raw<{ rows: Array<{ name: string; statement: string }> }>(
-            'SELECT name, statement FROM pg_prepared_statements'
-          );
+            // Verify no new prepared statement was created for INSERT
+            const afterStatements = await trx.raw<{
+              rows: Array<{ name: string; statement: string }>;
+            }>('SELECT name, statement FROM pg_prepared_statements');
 
-          // Should be the same count (no new prepared statement for INSERT)
-          expect(afterStatements.rows.length).toBe(beforeCount);
+            // Should be the same count (no new prepared statement for INSERT)
+            expect(afterStatements.rows.length).toBe(beforeCount);
 
-          // Roll back the transaction to avoid affecting other tests
-          throw new Error('Rollback');
-        }).catch((err) => {
-          // Ignore the rollback error
-          if (err.message !== 'Rollback') {
-            throw err;
-          }
-        });
+            // Roll back the transaction to avoid affecting other tests
+            throw new Error('Rollback');
+          })
+          .catch((err) => {
+            // Ignore the rollback error
+            if (err.message !== 'Rollback') {
+              throw err;
+            }
+          });
       } finally {
         await knexAutoName.destroy();
       }
     });
 
-    it('should respect explicit .prepared(false) even with autoNameSelects enabled', async () => {
-      // Create knex instance with autoNameSelects enabled
-      const knexAutoName = createTestKnex({ autoNameSelects: true });
+    it('should respect explicit .prepared(false) even with autoNameAllSelects enabled', async () => {
+      // Create knex instance with autoNameAllSelects enabled
+      const knexAutoName = createTestKnex({ autoNameAllSelects: true });
 
       try {
         await knexAutoName.transaction(async (trx) => {
@@ -209,9 +212,9 @@ describe.skipIf(shouldSkip)('Integration tests with PostgreSQL', () => {
       }
     });
 
-    it('should allow explicit prepared names to override autoNameSelects', async () => {
-      // Create knex instance with autoNameSelects enabled
-      const knexAutoName = createTestKnex({ autoNameSelects: true });
+    it('should allow explicit prepared names to override autoNameAllSelects', async () => {
+      // Create knex instance with autoNameAllSelects enabled
+      const knexAutoName = createTestKnex({ autoNameAllSelects: true });
 
       try {
         await knexAutoName.transaction(async (trx) => {
@@ -240,14 +243,13 @@ describe.skipIf(shouldSkip)('Integration tests with PostgreSQL', () => {
       }
     });
 
-    it('should not auto-prepare when autoNameSelects is false (default)', async () => {
-      // Use default knex instance (autoNameSelects: false)
+    it('should not auto-prepare when autoNameAllSelects is false (default)', async () => {
+      // Use default knex instance (autoNameAllSelects: false)
       await knex.transaction(async (trx) => {
         // Get initial prepared statement count
-        const beforeStatements = await trx.raw<{ rows: Array<{ name: string; statement: string }> }>(
-          'SELECT name FROM pg_prepared_statements WHERE name LIKE ?',
-          ['auto-%']
-        );
+        const beforeStatements = await trx.raw<{
+          rows: Array<{ name: string; statement: string }>;
+        }>('SELECT name FROM pg_prepared_statements WHERE name LIKE ?', ['auto-%']);
         const beforeCount = beforeStatements.rows.length;
 
         // Execute a SELECT query WITHOUT calling .prepared()

@@ -112,10 +112,10 @@ describe('knexPrepared options', () => {
       const options = getOptions(knex);
 
       expect(options).toBeDefined();
-      expect(options!.autoPrefix).toBe('auto');
-      expect(options!.autoHashLength).toBe(16);
+      expect(options!.autoNamePrefix).toBe('auto');
+      expect(options!.autoNameHashLength).toBe(16);
       expect(options!.rewriteInClauses).toBe(false);
-      expect(options!.autoNameSelects).toBe(false);
+      expect(options!.autoNameAllSelects).toBe(false);
     });
 
     it('should use default options for non-PostgreSQL clients', () => {
@@ -123,26 +123,26 @@ describe('knexPrepared options', () => {
       const options = getOptions(knex);
 
       expect(options).toBeDefined();
-      expect(options!.autoPrefix).toBe('auto');
-      expect(options!.autoHashLength).toBe(16);
+      expect(options!.autoNamePrefix).toBe('auto');
+      expect(options!.autoNameHashLength).toBe(16);
       expect(options!.rewriteInClauses).toBe(false);
-      expect(options!.autoNameSelects).toBe(false);
+      expect(options!.autoNameAllSelects).toBe(false);
     });
   });
 
   describe('custom options', () => {
-    it('should accept custom autoPrefix', () => {
-      const knex = knexPrepared(Knex({ client: 'pg' }), { autoPrefix: 'stmt' });
+    it('should accept custom autoNamePrefix', () => {
+      const knex = knexPrepared(Knex({ client: 'pg' }), { autoNamePrefix: 'stmt' });
       const options = getOptions(knex);
 
-      expect(options!.autoPrefix).toBe('stmt');
+      expect(options!.autoNamePrefix).toBe('stmt');
     });
 
-    it('should accept custom autoHashLength', () => {
-      const knex = knexPrepared(Knex({ client: 'pg' }), { autoHashLength: 8 });
+    it('should accept custom autoNameHashLength', () => {
+      const knex = knexPrepared(Knex({ client: 'pg' }), { autoNameHashLength: 8 });
       const options = getOptions(knex);
 
-      expect(options!.autoHashLength).toBe(8);
+      expect(options!.autoNameHashLength).toBe(8);
     });
 
     it('should accept custom rewriteInClauses', () => {
@@ -154,14 +154,14 @@ describe('knexPrepared options', () => {
 
     it('should accept all custom options together', () => {
       const knex = knexPrepared(Knex({ client: 'pg' }), {
-        autoPrefix: 'custom',
-        autoHashLength: 32,
+        autoNamePrefix: 'custom',
+        autoNameHashLength: 32,
         rewriteInClauses: false,
       });
       const options = getOptions(knex);
 
-      expect(options!.autoPrefix).toBe('custom');
-      expect(options!.autoHashLength).toBe(32);
+      expect(options!.autoNamePrefix).toBe('custom');
+      expect(options!.autoNameHashLength).toBe(32);
       expect(options!.rewriteInClauses).toBe(false);
     });
 
@@ -174,42 +174,42 @@ describe('knexPrepared options', () => {
   });
 
   describe('validation', () => {
-    it('should reject empty autoPrefix', () => {
+    it('should reject empty autoNamePrefix', () => {
       expect(() => {
-        knexPrepared(Knex({ client: 'pg' }), { autoPrefix: '' });
-      }).toThrow('autoPrefix must be a non-empty string');
+        knexPrepared(Knex({ client: 'pg' }), { autoNamePrefix: '' });
+      }).toThrow('autoNamePrefix must be a non-empty string');
     });
 
-    it('should reject non-string autoPrefix', () => {
+    it('should reject non-string autoNamePrefix', () => {
       expect(() => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        knexPrepared(Knex({ client: 'pg' }), { autoPrefix: 123 as any });
-      }).toThrow('autoPrefix must be a non-empty string');
+        knexPrepared(Knex({ client: 'pg' }), { autoNamePrefix: 123 as any });
+      }).toThrow('autoNamePrefix must be a non-empty string');
     });
 
-    it('should reject autoHashLength less than 1', () => {
+    it('should reject autoNameHashLength less than 1', () => {
       expect(() => {
-        knexPrepared(Knex({ client: 'pg' }), { autoHashLength: 0 });
-      }).toThrow('autoHashLength must be an integer between 1 and 64');
+        knexPrepared(Knex({ client: 'pg' }), { autoNameHashLength: 0 });
+      }).toThrow('autoNameHashLength must be an integer between 1 and 64');
     });
 
-    it('should reject autoHashLength greater than 64', () => {
+    it('should reject autoNameHashLength greater than 64', () => {
       expect(() => {
-        knexPrepared(Knex({ client: 'pg' }), { autoHashLength: 65 });
-      }).toThrow('autoHashLength must be an integer between 1 and 64');
+        knexPrepared(Knex({ client: 'pg' }), { autoNameHashLength: 65 });
+      }).toThrow('autoNameHashLength must be an integer between 1 and 64');
     });
 
-    it('should reject non-integer autoHashLength', () => {
+    it('should reject non-integer autoNameHashLength', () => {
       expect(() => {
-        knexPrepared(Knex({ client: 'pg' }), { autoHashLength: 10.5 });
-      }).toThrow('autoHashLength must be an integer between 1 and 64');
+        knexPrepared(Knex({ client: 'pg' }), { autoNameHashLength: 10.5 });
+      }).toThrow('autoNameHashLength must be an integer between 1 and 64');
     });
 
-    it('should reject non-number autoHashLength', () => {
+    it('should reject non-number autoNameHashLength', () => {
       expect(() => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        knexPrepared(Knex({ client: 'pg' }), { autoHashLength: '16' as any });
-      }).toThrow('autoHashLength must be an integer between 1 and 64');
+        knexPrepared(Knex({ client: 'pg' }), { autoNameHashLength: '16' as any });
+      }).toThrow('autoNameHashLength must be an integer between 1 and 64');
     });
   });
 

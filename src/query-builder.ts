@@ -29,7 +29,29 @@ interface QueryBuilderConstructor {
 
 interface QueryBuilderInstance {
   [key: symbol]: PreparedMetadata;
+  queryContext: (context?: unknown) => unknown;
+  _knexPreparedMetadata?: PreparedMetadata;
 }
+
+/**
+ * Stores prepared statement metadata on a QueryBuilder instance in multiple locations
+ * for reliability across different code paths (Symbol, queryContext, and direct property).
+ */
+export const setQueryBuilderMetadata = (
+  builder: QueryBuilderInstance,
+  metadata: PreparedMetadata
+): void => {
+  // Store using Symbol
+  builder[PREPARED_SYMBOL] = metadata;
+
+  // Store in queryContext for access in query events
+  const existingContext = (builder.queryContext() as Record<symbol, unknown> | undefined) || {};
+  const newContext = { ...existingContext, [PREPARED_SYMBOL]: metadata };
+  builder.queryContext(newContext);
+
+  // Store as direct property for additional access path
+  builder._knexPreparedMetadata = metadata;
+};
 
 /**
  * Extends Knex QueryBuilder with the .prepared() chainable method.
@@ -48,22 +70,7 @@ export const extendQueryBuilder = (knex: Knex): void => {
     function (this: QueryBuilderInstance, nameOrFlag?: string | boolean) {
       const name = determineNameValue(nameOrFlag);
       const metadata: PreparedMetadata = { name };
-      this[PREPARED_SYMBOL] = metadata;
-
-      // Store in global map with a unique key based on this builder instance
-      // We'll use the builder's toSQL() to generate a key when the query executes
-      // For now, just mark this builder as having prepared metadata
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const self = this as any;
-
-      // Store metadata in both places for redundancy
-      const existingContext = self.queryContext() || {};
-      const newContext = { ...existingContext, [PREPARED_SYMBOL]: metadata };
-      self.queryContext(newContext);
-
-      // Also store a flag that we can check later
-      self._knexPreparedMetadata = metadata;
-
+      setQueryBuilderMetadata(this, metadata);
       return this;
     }
   );

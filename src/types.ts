@@ -6,14 +6,20 @@ export interface KnexPreparedOptions {
    * Prefix for auto-generated prepared statement names.
    * @default 'auto'
    */
-  autoPrefix?: string;
+  autoNamePrefix?: string;
 
   /**
    * Length of hash to use in auto-generated names.
    * Must be between 1 and 64.
    * @default 16
    */
-  autoHashLength?: number;
+  autoNameHashLength?: number;
+
+  /**
+   * Automatically name prepare SELECT queries without calling .prepared().
+   * @default false
+   */
+  autoNameAllSelects?: boolean;
 
   /**
    * Whether to rewrite IN clauses to = ANY() for better prepared statement caching.
@@ -21,12 +27,6 @@ export interface KnexPreparedOptions {
    * @default false
    */
   rewriteInClauses?: boolean;
-
-  /**
-   * Automatically prepare SELECT queries without calling .prepared().
-   * @default false
-   */
-  autoNameSelects?: boolean;
 
   /**
    * Disable warnings for prepared queries with IN clauses when rewriteInClauses is false.
@@ -40,9 +40,9 @@ export interface KnexPreparedOptions {
  * Resolved configuration options with all defaults applied.
  */
 export interface ResolvedKnexPreparedOptions {
-  autoPrefix: string;
-  autoHashLength: number;
+  autoNamePrefix: string;
+  autoNameHashLength: number;
+  autoNameAllSelects: boolean;
   rewriteInClauses: boolean;
-  autoNameSelects: boolean;
   disableInClausesWarning: boolean;
 }
