@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import Knex from 'knex';
 import { knexPrepared, PREPARED_SYMBOL } from './index';
-import { getMetadata, getKnexEvents } from './test-utils';
+import { getMetadata, getKnexEvents, getOptions } from './test-utils';
 import type { QueryData } from './test-utils';
 
 describe('knexPrepared integration', () => {
@@ -101,5 +101,132 @@ describe('knexPrepared integration', () => {
     expect(knex.prepared).toBeDefined();
     const query = knex.prepared('users').select('*');
     expect(getMetadata(query)!.name).toBe('auto');
+  });
+});
+
+describe('knexPrepared options', () => {
+  describe('default values', () => {
+    it('should use default options for PostgreSQL client', () => {
+      const knex = knexPrepared(Knex({ client: 'pg' }));
+      const options = getOptions(knex);
+
+      expect(options).toBeDefined();
+      expect(options!.autoPrefix).toBe('auto');
+      expect(options!.autoHashLength).toBe(16);
+      expect(options!.rewriteInClauses).toBe(true);
+    });
+
+    it('should disable rewriteInClauses for non-PostgreSQL clients', () => {
+      const knex = knexPrepared(Knex({ client: 'sqlite3' }));
+      const options = getOptions(knex);
+
+      expect(options).toBeDefined();
+      expect(options!.autoPrefix).toBe('auto');
+      expect(options!.autoHashLength).toBe(16);
+      expect(options!.rewriteInClauses).toBe(false);
+    });
+  });
+
+  describe('custom options', () => {
+    it('should accept custom autoPrefix', () => {
+      const knex = knexPrepared(Knex({ client: 'pg' }), { autoPrefix: 'stmt' });
+      const options = getOptions(knex);
+
+      expect(options!.autoPrefix).toBe('stmt');
+    });
+
+    it('should accept custom autoHashLength', () => {
+      const knex = knexPrepared(Knex({ client: 'pg' }), { autoHashLength: 8 });
+      const options = getOptions(knex);
+
+      expect(options!.autoHashLength).toBe(8);
+    });
+
+    it('should accept custom rewriteInClauses', () => {
+      const knex = knexPrepared(Knex({ client: 'pg' }), { rewriteInClauses: false });
+      const options = getOptions(knex);
+
+      expect(options!.rewriteInClauses).toBe(false);
+    });
+
+    it('should accept all custom options together', () => {
+      const knex = knexPrepared(Knex({ client: 'pg' }), {
+        autoPrefix: 'custom',
+        autoHashLength: 32,
+        rewriteInClauses: false,
+      });
+      const options = getOptions(knex);
+
+      expect(options!.autoPrefix).toBe('custom');
+      expect(options!.autoHashLength).toBe(32);
+      expect(options!.rewriteInClauses).toBe(false);
+    });
+
+    it('should freeze options to prevent modification', () => {
+      const knex = knexPrepared(Knex({ client: 'pg' }));
+      const options = getOptions(knex);
+
+      expect(Object.isFrozen(options)).toBe(true);
+    });
+  });
+
+  describe('validation', () => {
+    it('should reject empty autoPrefix', () => {
+      expect(() => {
+        knexPrepared(Knex({ client: 'pg' }), { autoPrefix: '' });
+      }).toThrow('autoPrefix must be a non-empty string');
+    });
+
+    it('should reject non-string autoPrefix', () => {
+      expect(() => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        knexPrepared(Knex({ client: 'pg' }), { autoPrefix: 123 as any });
+      }).toThrow('autoPrefix must be a non-empty string');
+    });
+
+    it('should reject autoHashLength less than 1', () => {
+      expect(() => {
+        knexPrepared(Knex({ client: 'pg' }), { autoHashLength: 0 });
+      }).toThrow('autoHashLength must be an integer between 1 and 64');
+    });
+
+    it('should reject autoHashLength greater than 64', () => {
+      expect(() => {
+        knexPrepared(Knex({ client: 'pg' }), { autoHashLength: 65 });
+      }).toThrow('autoHashLength must be an integer between 1 and 64');
+    });
+
+    it('should reject non-integer autoHashLength', () => {
+      expect(() => {
+        knexPrepared(Knex({ client: 'pg' }), { autoHashLength: 10.5 });
+      }).toThrow('autoHashLength must be an integer between 1 and 64');
+    });
+
+    it('should reject non-number autoHashLength', () => {
+      expect(() => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        knexPrepared(Knex({ client: 'pg' }), { autoHashLength: '16' as any });
+      }).toThrow('autoHashLength must be an integer between 1 and 64');
+    });
+  });
+
+  describe('client detection', () => {
+    it('should detect pg client', () => {
+      const knex = knexPrepared(Knex({ client: 'pg' }));
+      const options = getOptions(knex);
+
+      expect(options!.rewriteInClauses).toBe(true);
+    });
+
+    it('should detect non-pg clients', () => {
+      const clients = ['mysql', 'mysql2', 'sqlite3', 'better-sqlite3', 'mssql', 'oracledb'];
+
+      clients.forEach((client) => {
+        const knex = knexPrepared(Knex({ client }));
+        const options = getOptions(knex);
+
+        expect(options!.rewriteInClauses).toBe(false);
+      });
+    });
   });
 });

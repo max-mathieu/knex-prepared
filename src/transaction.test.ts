@@ -82,9 +82,11 @@ describe('wrapTransactionMethod', () => {
 
     // Test errors
     const expectedError = new Error('Transaction failed');
-    await expect(mockTransaction(knex, async () => {
-      throw expectedError;
-    })).rejects.toThrow('Transaction failed');
+    await expect(
+      mockTransaction(knex, async () => {
+        throw expectedError;
+      })
+    ).rejects.toThrow('Transaction failed');
   });
 
   it('should call original transaction for non-callback arguments', async () => {

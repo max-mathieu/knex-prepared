@@ -1,9 +1,14 @@
 import type { Knex } from 'knex';
 import type { PreparedMetadata } from './query-builder';
-import { PREPARED_SYMBOL } from './query-builder';
+import type { ResolvedKnexPreparedOptions } from './types';
+import { PREPARED_SYMBOL, KNEX_PREPARED_OPTIONS_SYMBOL } from './query-builder';
 
 export interface KnexInternal extends Knex {
   _events?: { query?: unknown; [key: string]: unknown };
+}
+
+export interface KnexWithOptions extends Knex {
+  [KNEX_PREPARED_OPTIONS_SYMBOL]?: ResolvedKnexPreparedOptions;
 }
 
 export interface QueryBuilderWithMetadata extends Knex.QueryBuilder {
@@ -24,4 +29,8 @@ export const getMetadata = (query: Knex.QueryBuilder): PreparedMetadata | undefi
 
 export const getKnexEvents = (knex: Knex): KnexInternal['_events'] => {
   return (knex as KnexInternal)._events;
+};
+
+export const getOptions = (knex: Knex): ResolvedKnexPreparedOptions | undefined => {
+  return (knex as KnexWithOptions)[KNEX_PREPARED_OPTIONS_SYMBOL];
 };
