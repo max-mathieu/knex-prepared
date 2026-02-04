@@ -226,6 +226,76 @@ const hasInClause = (sql: string): boolean => {
 };
 
 /**
+ * Result of processing a query for prepared statements.
+ */
+interface ProcessedQuery {
+  metadata: PreparedMetadata;
+  sql: string;
+  bindings: unknown[];
+  preparedName: string | null;
+}
+
+/**
+ * Processes query metadata, handles auto-naming, warnings, and IN clause rewriting.
+ * Returns processed query information.
+ */
+const processQueryMetadata = (
+  metadata: PreparedMetadata | undefined,
+  sql: string,
+  bindings: unknown[],
+  options: ResolvedKnexPreparedOptions,
+  useDollarNotation: boolean
+): ProcessedQuery | null => {
+  // Auto-name SELECT queries if enabled and not already prepared
+  if (!metadata && options.autoNameSelects && isSelectQuery(sql)) {
+    metadata = { name: 'auto' };
+  }
+
+  if (!metadata) {
+    return null;
+  }
+
+  // Warn about IN clauses if conditions are met
+  if (
+    metadata.name !== null &&
+    !options.rewriteInClauses &&
+    !options.disableInClausesWarning &&
+    hasInClause(sql)
+  ) {
+    console.warn(
+      '[knex-prepared] Warning: Prepared statement with IN/NOT IN clause detected. ' +
+        'Prepared statements with variable-length parameter lists can lead to poor plan caching. ' +
+        'Consider using rewriteInClauses option or rewriting to = ANY($1) / <> ALL($1) manually.'
+    );
+  }
+
+  // Rewrite IN clauses if enabled
+  let processedSql = sql;
+  let processedBindings = bindings;
+  if (options.rewriteInClauses && metadata.name !== null) {
+    const rewritten = rewriteInClausesInQuery(sql, bindings, useDollarNotation);
+    processedSql = rewritten.sql;
+    processedBindings = rewritten.bindings;
+  }
+
+  // Generate or use prepared statement name
+  let preparedName: string | null = null;
+  if (metadata.name !== null) {
+    preparedName =
+      metadata.name === 'auto'
+        ? generatePreparedStatementName(processedSql, options)
+        : metadata.name;
+  }
+
+  return {
+    metadata,
+    sql: processedSql,
+    bindings: processedBindings,
+    preparedName,
+  };
+};
+
+/**
  * Attaches a query hook to inject prepared statement names and rewrite IN clauses before execution.
  * For PostgreSQL, the `name` property tells the pg driver to use prepared statements.
  *
@@ -241,62 +311,31 @@ export const attachPreparedStatementHook = (knex: Knex): void => {
 
   // Listen to 'query' event to prepare rewrites before they reach the driver
   knex.on('query', (queryData: QueryData) => {
-    let metadata = queryData.queryContext?.[PREPARED_SYMBOL];
+    if (typeof queryData.sql !== 'string') {
+      return;
+    }
 
-    if (typeof queryData.sql === 'string') {
-      // Auto-name SELECT queries if enabled and not already prepared
-      if (!metadata && options.autoNameSelects && isSelectQuery(queryData.sql)) {
-        metadata = { name: 'auto' };
-        // Store metadata in queryContext for downstream processing
-        if (!queryData.queryContext) {
-          queryData.queryContext = {};
-        }
-        queryData.queryContext[PREPARED_SYMBOL] = metadata;
+    const originalSql = queryData.sql;
+    const bindings = queryData.bindings || [];
+    const metadata = queryData.queryContext?.[PREPARED_SYMBOL];
+
+    // Process query with $n notation (after Knex/pg formatting)
+    const processed = processQueryMetadata(metadata, originalSql, bindings, options, true);
+
+    if (processed) {
+      // Store metadata in queryContext for downstream processing
+      if (!queryData.queryContext) {
+        queryData.queryContext = {};
       }
+      queryData.queryContext[PREPARED_SYMBOL] = processed.metadata;
 
-      if (metadata) {
-        // The SQL at this point has $n notation (after Knex/pg formatting)
-        const originalSql = queryData.sql;
-        let bindings = queryData.bindings || [];
-
-        // Warn about IN clauses if conditions are met
-        if (
-          metadata.name !== null &&
-          !options.rewriteInClauses &&
-          !options.disableInClausesWarning &&
-          hasInClause(originalSql)
-        ) {
-          console.warn(
-            '[knex-prepared] Warning: Prepared statement with IN/NOT IN clause detected. ' +
-              'Prepared statements with variable-length parameter lists can lead to poor plan caching. ' +
-              'Consider using rewriteInClauses option or rewriting to = ANY($1) / <> ALL($1) manually.'
-          );
-        }
-
-        // Rewrite IN clauses if enabled (working with $n notation)
-        let rewrittenSql = originalSql;
-        if (options.rewriteInClauses && metadata.name !== null) {
-          const rewritten = rewriteInClausesInQuery(originalSql, bindings, true); // true = $n notation
-          rewrittenSql = rewritten.sql;
-          bindings = rewritten.bindings;
-        }
-
-        // Generate or use prepared statement name (from rewritten SQL)
-        // Only store if prepared statements are enabled (name is not null)
-        if (metadata.name !== null) {
-          const preparedName =
-            metadata.name === 'auto'
-              ? generatePreparedStatementName(rewrittenSql, options)
-              : metadata.name;
-
-          // Store for connection.query() to pick up
-          // Key is the ORIGINAL SQL (what connection.query() will receive)
-          pendingRewrites.set(originalSql, {
-            rewrittenSql,
-            rewrittenBindings: bindings,
-            preparedName,
-          });
-        }
+      // Store for connection.query() to pick up (if prepared statement is enabled)
+      if (processed.preparedName) {
+        pendingRewrites.set(originalSql, {
+          rewrittenSql: processed.sql,
+          rewrittenBindings: processed.bindings,
+          preparedName: processed.preparedName,
+        });
       }
     }
   });
@@ -307,63 +346,30 @@ export const attachPreparedStatementHook = (knex: Knex): void => {
 
   // Helper function to process query objects (for non-transaction queries)
   const processQuery = (obj: QueryObject): void => {
-    let metadata = obj.queryContext?.[PREPARED_SYMBOL];
+    if (typeof obj.sql !== 'string') {
+      return;
+    }
 
-    if (typeof obj.sql === 'string') {
-      // Auto-name SELECT queries if enabled and not already prepared
-      if (!metadata && options.autoNameSelects && isSelectQuery(obj.sql)) {
-        metadata = { name: 'auto' };
-        // Ensure queryContext exists
-        obj.queryContext = obj.queryContext || ({} as QueryObject['queryContext']);
-        obj.queryContext![PREPARED_SYMBOL] = metadata;
+    const metadata = obj.queryContext?.[PREPARED_SYMBOL];
+    const bindings = obj.bindings || [];
+
+    // Process query with ? notation (pre-driver)
+    const processed = processQueryMetadata(metadata, obj.sql, bindings, options, false);
+
+    if (processed) {
+      // Apply rewritten SQL and bindings
+      obj.sql = processed.sql;
+      obj.bindings = processed.bindings;
+
+      // Inject prepared statement name
+      if (processed.preparedName) {
+        obj.options = obj.options || {};
+        obj.options.name = processed.preparedName;
       }
 
-      if (metadata) {
-        let sql = obj.sql;
-        let bindings = obj.bindings || [];
-
-        // Warn about IN clauses if conditions are met
-        if (
-          metadata.name !== null &&
-          !options.rewriteInClauses &&
-          !options.disableInClausesWarning &&
-          hasInClause(sql)
-        ) {
-          console.warn(
-            '[knex-prepared] Warning: Prepared statement with IN/NOT IN clause detected. ' +
-              'Prepared statements with variable-length parameter lists can lead to poor plan caching. ' +
-              'Consider using rewriteInClauses option or rewriting to = ANY($1) / <> ALL($1) manually.'
-          );
-        }
-
-        // Rewrite IN clauses if enabled (using ? notation since we're pre-driver)
-        if (options.rewriteInClauses && metadata.name !== null) {
-          const rewritten = rewriteInClausesInQuery(sql, bindings, false); // false = ? notation
-          sql = rewritten.sql;
-          bindings = rewritten.bindings;
-        }
-
-        // Apply rewritten SQL and bindings
-        obj.sql = sql;
-        obj.bindings = bindings;
-
-        // Inject prepared statement name (computed from rewritten SQL)
-        if (metadata.name !== null) {
-          if (metadata.name !== 'auto') {
-            obj.options = obj.options || {};
-            obj.options.name = metadata.name;
-          } else {
-            // Generate name from rewritten SQL
-            const preparedName = generatePreparedStatementName(sql, options);
-            obj.options = obj.options || {};
-            obj.options.name = preparedName;
-          }
-        }
-
-        // Ensure queryContext is defined for later access
-        obj.queryContext = obj.queryContext || ({} as QueryObject['queryContext']);
-        obj.queryContext![PREPARED_SYMBOL] = metadata;
-      }
+      // Ensure queryContext is defined for later access
+      obj.queryContext = obj.queryContext || ({} as QueryObject['queryContext']);
+      obj.queryContext![PREPARED_SYMBOL] = processed.metadata;
     }
   };
 
