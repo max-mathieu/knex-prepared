@@ -8,15 +8,15 @@ import { wrapTransactionMethod } from './transaction';
  * Extends a Knex instance with prepared statement support.
  * Adds `.prepared()` chainable method and `knex.prepared(tableName)` factory.
  */
-export function knexPrepared<TKnex extends Knex = Knex>(
+export const knexPrepared = <TKnex extends Knex = Knex>(
   knex: TKnex
-): TKnex & { prepared: (tableName: string) => Knex.QueryBuilder } {
+): TKnex & { prepared: (tableName: string) => Knex.QueryBuilder } => {
   extendQueryBuilder(knex);
   const extended = addPreparedFactory(knex);
   wrapTransactionMethod(knex);
   attachPreparedStatementHook(knex);
   return extended as TKnex & { prepared: (tableName: string) => Knex.QueryBuilder };
-}
+};
 
 // Re-export types for convenience
 export type { PreparedMetadata } from './query-builder';

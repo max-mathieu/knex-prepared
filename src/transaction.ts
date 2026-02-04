@@ -4,7 +4,7 @@ import { addPreparedFactory } from './factory';
 /**
  * Wraps Knex transaction method to add prepared factory to transaction instances.
  */
-export function wrapTransactionMethod(knex: Knex): void {
+export const wrapTransactionMethod = (knex: Knex): void => {
   const originalTransaction = knex.transaction.bind(knex);
 
   // Override transaction method using Object.defineProperty since it's read-only
@@ -39,4 +39,4 @@ export function wrapTransactionMethod(knex: Knex): void {
     enumerable: true,
     configurable: true,
   });
-}
+};

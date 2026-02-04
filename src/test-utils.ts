@@ -18,10 +18,10 @@ export interface QueryData {
   [key: string]: unknown;
 }
 
-export function getMetadata(query: Knex.QueryBuilder): PreparedMetadata | undefined {
+export const getMetadata = (query: Knex.QueryBuilder): PreparedMetadata | undefined => {
   return (query as QueryBuilderWithMetadata)[PREPARED_SYMBOL];
-}
+};
 
-export function getKnexEvents(knex: Knex): KnexInternal['_events'] {
+export const getKnexEvents = (knex: Knex): KnexInternal['_events'] => {
   return (knex as KnexInternal)._events;
-}
+};

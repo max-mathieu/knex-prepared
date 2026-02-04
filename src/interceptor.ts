@@ -12,7 +12,7 @@ interface QueryData {
  * Attaches a query event hook to inject prepared statement names before execution.
  * For PostgreSQL, the `name` property tells the pg driver to use prepared statements.
  */
-export function attachPreparedStatementHook(knex: Knex): void {
+export const attachPreparedStatementHook = (knex: Knex): void => {
   knex.on('query', (queryData: QueryData) => {
     const metadata = queryData.queryContext?.[PREPARED_SYMBOL];
 
@@ -20,19 +20,18 @@ export function attachPreparedStatementHook(knex: Knex): void {
       return;
     }
 
-    let preparedName: string;
-    if (metadata.name === 'auto') {
-      if (typeof queryData.sql !== 'string') {
-        return;
-      }
-      preparedName = generatePreparedStatementName(queryData.sql);
-    } else {
-      preparedName = metadata.name;
+    if (metadata.name !== 'auto') {
+      queryData.options = queryData.options || {};
+      queryData.options.name = metadata.name;
+      return;
     }
 
-    // Set name in options object (not directly on queryData)
-    // The pg driver expects: queryConfig = extend(queryConfig, obj.options)
+    if (typeof queryData.sql !== 'string') {
+      return;
+    }
+
+    const preparedName = generatePreparedStatementName(queryData.sql);
     queryData.options = queryData.options || {};
     queryData.options.name = preparedName;
   });
-}
+};

@@ -4,7 +4,7 @@
 [![CI](https://github.com/max/knex-prepared/actions/workflows/ci.yml/badge.svg)](https://github.com/max/knex-prepared/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-PostgreSQL prepared statement support for Knex.js with type-safe APIs.
+Control named prepared statements in PostgreSQL for Knex.js with type-safe APIs. While node-postgres uses unnamed prepared statements for query parameterization, this library enables explicit naming to maximize query plan caching and performance.
 
 ## Installation
 
@@ -43,11 +43,12 @@ await knex('users').prepared(false).select('*');
 
 ## Features
 
-- **Two APIs**: Factory method (`knex.prepared('table')`) and chainable (`.prepared()`)
-- **Auto-naming**: Deterministic hash-based names (`auto-{hash16}`)
+- **Factory API**: Create queries with `knex.prepared('table')`
+- **Chainable API**: Add `.prepared()` to any query chain
+- **Auto-naming**: Deterministic hash-based statement names
 - **Custom naming**: Use your own statement names
-- **Type-safe**: Full TypeScript support
-- **Zero dependencies**: Only peer deps on Knex and pg
+- **Type-safe**: Full TypeScript support with inference
+- **Zero dependencies**: Only peer dependencies on Knex and pg
 
 ## API
 
@@ -89,7 +90,7 @@ await knex('users').where('active', true).prepared().select('*');
 
 ## Transactions
 
-Prepared statements work seamlessly with Knex transactions. Both the factory and chainable methods are supported:
+Prepared statements work seamlessly with Knex transactions:
 
 ```typescript
 await knex.transaction(async (trx) => {
@@ -102,20 +103,23 @@ await knex.transaction(async (trx) => {
     user_id: 1
   });
 
-  // Custom names work too
+  // Custom names
   await trx('users').prepared('update-balance').where('id', 2).update({ balance: 200 });
 });
 ```
 
-**Note**: Each transaction uses the same database connection, which means prepared statements created within a transaction are available throughout that transaction and persist on the connection after the transaction completes.
+**Note**: Transactions use a single database connection. Prepared statements created within a transaction remain available throughout the transaction and persist on the connection afterward.
 
 ## How It Works
 
-**Naming**: Auto-generated names use the format `auto-{first 16 chars of SHA-256 hash}`. Same SQL always produces the same name.
+### Naming
+Auto-generated names use the format `auto-{first 16 chars of SHA-256 hash}`. Identical SQL produces identical names, enabling plan reuse across connections.
 
-**Execution**: Hooks into Knex's `query` event to inject the `name` property. The pg driver automatically caches execution plans per connection.
+### Execution
+The library hooks into Knex's `query` event to inject the `name` property before execution. The pg driver automatically caches prepared statement plans per connection.
 
-**Performance**: Prepared statements skip SQL parsing on repeat execution. Expect 10-30% improvement for frequently executed queries.
+### Performance
+Prepared statements eliminate SQL parsing overhead on subsequent executions. Expect 10-30% performance improvement for frequently executed queries.
 
 ## TypeScript
 
@@ -128,11 +132,26 @@ const users = await knex.prepared<User>('users').select('*');  // User[]
 const user = await knex<User>('users').prepared().where('id', 1).first();  // User | undefined
 ```
 
+## Database Support
+
+### PostgreSQL
+This library is designed specifically for PostgreSQL, which supports [named prepared statements](https://www.postgresql.org/docs/current/sql-prepare.html) that can be explicitly managed and reused across queries on the same connection.
+
+### Other Databases
+Knex supports several other databases that handle query optimization differently:
+
+- **mysql** - Does not support prepared statements in the traditional sense. The [mysql driver](https://github.com/mysqljs/mysql#readme) uses query parameterization but does not cache query plans.
+
+- **mysql2** - Implements its own [LRU cache for prepared statements](https://github.com/sidorares/node-mysql2#using-prepared-statements) using query hashes, automatically managing statement lifecycle without explicit naming.
+
+- **mssql** - Query plan caching is managed by SQL Server itself through its [plan cache](https://learn.microsoft.com/en-us/sql/relational-databases/query-processing-architecture-guide#execution-plan-caching-and-reuse). No client-side statement management is needed.
+
+This library does not support these databases because they either lack named prepared statement support or handle optimization automatically.
+
 ## Limitations
 
-- **PostgreSQL only** - Other databases not supported
-- **Per-connection caching** - Each pooled connection maintains its own prepared statement cache
-- **Connection lifetime** - Statements persist in memory for the connection's lifetime
+- **Per-connection caching** - Each pooled connection maintains its own cache
+- **Connection lifetime** - Statements remain in memory for the connection's lifetime
 
 ## Monitoring
 
@@ -144,13 +163,13 @@ SELECT name, statement FROM pg_prepared_statements WHERE name LIKE 'auto-%';
 
 ## Testing
 
+Run unit tests (no database required):
 ```bash
 npm install
-npm test  # Unit tests (no database required)
+npm test
 ```
 
-Integration tests require PostgreSQL:
-
+For integration tests with PostgreSQL:
 ```bash
 cp .env.example .env
 docker run --name postgres-test -e POSTGRES_PASSWORD=postgres -p 5432:5432 -d postgres:16
@@ -158,7 +177,7 @@ npm test
 docker stop postgres-test && docker rm postgres-test
 ```
 
-Environment variables: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` (all have sensible defaults).
+Configure via environment variables: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` (defaults provided).
 
 ## Benchmarks
 

@@ -15,7 +15,7 @@ export interface PreparedFactory {
 }
 
 /** Adds the `knex.prepared(tableName)` factory method. */
-export function addPreparedFactory(knex: Knex): Knex & { prepared: PreparedFactory } {
+export const addPreparedFactory = (knex: Knex): Knex & { prepared: PreparedFactory } => {
   const extended = knex as Knex & { prepared: PreparedFactory };
 
   extended.prepared = function <TRecord extends {} = Record<string, unknown>, TResult = unknown[]>(
@@ -36,7 +36,7 @@ export function addPreparedFactory(knex: Knex): Knex & { prepared: PreparedFacto
   };
 
   return extended;
-}
+};
 
 // TypeScript module augmentation to add the factory method to Knex
 declare module 'knex' {

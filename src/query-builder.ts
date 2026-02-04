@@ -29,7 +29,7 @@ interface QueryBuilderInstance {
  * Extends Knex QueryBuilder with the .prepared() chainable method.
  * Idempotent - safe to call multiple times.
  */
-export function extendQueryBuilder(knex: Knex): void {
+export const extendQueryBuilder = (knex: Knex): void => {
   const dummyQuery = knex.queryBuilder();
   const QueryBuilderConstructor = dummyQuery.constructor as unknown as QueryBuilderConstructor;
 
@@ -40,24 +40,10 @@ export function extendQueryBuilder(knex: Knex): void {
   QueryBuilderConstructor.extend(
     'prepared',
     function (this: QueryBuilderInstance, nameOrFlag?: string | boolean) {
-      let name: PreparedMetadata['name'];
-
-      if (nameOrFlag === false) {
-        name = null;
-      } else if (nameOrFlag === undefined || nameOrFlag === true) {
-        name = 'auto';
-      } else if (typeof nameOrFlag === 'string') {
-        name = nameOrFlag;
-      } else {
-        throw new Error(
-          `Invalid argument to .prepared(): expected string, boolean, or undefined, got ${typeof nameOrFlag}`
-        );
-      }
-
+      const name = determineNameValue(nameOrFlag);
       const metadata: PreparedMetadata = { name };
       this[PREPARED_SYMBOL] = metadata;
 
-      // Store metadata in queryContext so it's available in the query event
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const self = this as any;
       const existingContext = self.queryContext() || {};
@@ -67,7 +53,17 @@ export function extendQueryBuilder(knex: Knex): void {
       return this;
     }
   );
-}
+};
+
+const determineNameValue = (nameOrFlag?: string | boolean): PreparedMetadata['name'] => {
+  if (nameOrFlag === false) return null;
+  if (nameOrFlag === undefined || nameOrFlag === true) return 'auto';
+  if (typeof nameOrFlag === 'string') return nameOrFlag;
+
+  throw new Error(
+    `Invalid argument to .prepared(): expected string, boolean, or undefined, got ${typeof nameOrFlag}`
+  );
+};
 
 // TypeScript module augmentation to add .prepared() to Knex types
 declare module 'knex' {

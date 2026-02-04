@@ -214,10 +214,7 @@ describe.skipIf(shouldSkip)('Integration tests with PostgreSQL', () => {
     it('should use custom prepared statement names', async () => {
       await knex.transaction(async (trx) => {
         // Execute query with custom name
-        await trx('users')
-          .prepared('my-custom-query')
-          .select('*')
-          .where('id', userIds.user1Id);
+        await trx('users').prepared('my-custom-query').select('*').where('id', userIds.user1Id);
 
         // Verify the custom name appears in pg_prepared_statements
         const result = await trx.raw<{ rows: Array<{ name: string; statement: string }> }>(
