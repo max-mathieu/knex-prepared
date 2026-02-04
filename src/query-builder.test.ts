@@ -66,7 +66,7 @@ describe('extendQueryBuilder', () => {
 
     expect(query).toBeDefined();
     const metadata = getMetadata(query);
-    expect(metadata!.name).toBe('test');
+    expect(metadata?.name).toBe('test');
   });
 
   it('should work with different query types', () => {

@@ -84,7 +84,7 @@ describe('knexPrepared integration', () => {
       .offset(20);
 
     const metadata = getMetadata(query);
-    expect(metadata!.name).toBe('auto');
+    expect(metadata?.name).toBe('auto');
 
     const sql = query.toSQL();
     expect(sql.sql).toContain('select');

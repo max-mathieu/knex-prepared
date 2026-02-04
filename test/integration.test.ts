@@ -1,7 +1,25 @@
+import { config } from 'dotenv';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createTestKnex, setupTestTables, seedTestData, teardownTestTables } from './setup';
 
-describe('Integration tests with PostgreSQL', () => {
+// Load .env file before checking environment variables
+config();
+
+// Check if we should skip integration tests
+// Skip if no DB_HOST is set, UNLESS we're in CI (where tests must run)
+const isCI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true';
+const hasDBConfig = !!process.env.DB_HOST;
+const shouldSkip = !hasDBConfig && !isCI;
+
+// In CI, fail fast if DB config is missing
+if (isCI && !hasDBConfig) {
+  throw new Error(
+    'Integration tests are running in CI but DB_HOST is not set. ' +
+      'Please check CI configuration for database environment variables.'
+  );
+}
+
+describe.skipIf(shouldSkip)('Integration tests with PostgreSQL', () => {
   let knex: ReturnType<typeof createTestKnex>;
   let userIds: { user1Id: number; user2Id: number; user3Id: number };
 
