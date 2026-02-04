@@ -3,7 +3,7 @@ import { PREPARED_SYMBOL, type PreparedMetadata } from './query-builder';
 import { generatePreparedStatementName } from './hash';
 
 interface QueryData {
-  __knexQueryBuilder?: { [PREPARED_SYMBOL]?: PreparedMetadata };
+  queryContext?: { [PREPARED_SYMBOL]?: PreparedMetadata };
   sql?: string | unknown;
   name?: string;
 }
@@ -14,7 +14,7 @@ interface QueryData {
  */
 export function attachPreparedStatementHook(knex: Knex): void {
   knex.on('query', (queryData: QueryData) => {
-    const metadata = queryData.__knexQueryBuilder?.[PREPARED_SYMBOL];
+    const metadata = queryData.queryContext?.[PREPARED_SYMBOL];
 
     if (!metadata || metadata.name === null) {
       return;

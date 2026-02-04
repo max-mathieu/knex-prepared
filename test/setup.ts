@@ -111,7 +111,7 @@ export async function setupTestTables(knex: KnexType) {
  */
 export async function seedTestData(knex: KnexType) {
   // Insert test users
-  const [user1Id] = await knex('users')
+  const [user1] = await knex('users')
     .insert({
       name: 'Alice',
       email: 'alice@example.com',
@@ -119,7 +119,7 @@ export async function seedTestData(knex: KnexType) {
     })
     .returning('id');
 
-  const [user2Id] = await knex('users')
+  const [user2] = await knex('users')
     .insert({
       name: 'Bob',
       email: 'bob@example.com',
@@ -127,13 +127,17 @@ export async function seedTestData(knex: KnexType) {
     })
     .returning('id');
 
-  const [user3Id] = await knex('users')
+  const [user3] = await knex('users')
     .insert({
       name: 'Charlie',
       email: 'charlie@example.com',
       active: false,
     })
     .returning('id');
+
+  const user1Id = user1.id;
+  const user2Id = user2.id;
+  const user3Id = user3.id;
 
   // Insert test posts
   await knex('posts').insert([

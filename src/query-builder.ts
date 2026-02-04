@@ -54,7 +54,16 @@ export function extendQueryBuilder(knex: Knex): void {
         );
       }
 
-      this[PREPARED_SYMBOL] = { name };
+      const metadata: PreparedMetadata = { name };
+      this[PREPARED_SYMBOL] = metadata;
+
+      // Store metadata in queryContext so it's available in the query event
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const self = this as any;
+      const existingContext = self.queryContext() || {};
+      const newContext = { ...existingContext, [PREPARED_SYMBOL]: metadata };
+      self.queryContext(newContext);
+
       return this;
     }
   );

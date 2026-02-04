@@ -14,7 +14,7 @@ export interface QueryData {
   sql: string;
   bindings: unknown[];
   name?: string;
-  __knexQueryBuilder?: Partial<QueryBuilderWithMetadata>;
+  queryContext?: { [PREPARED_SYMBOL]?: PreparedMetadata };
   [key: string]: unknown;
 }
 

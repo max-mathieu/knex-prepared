@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import Knex from 'knex';
-import { knexPrepared } from './index';
+import { knexPrepared, PREPARED_SYMBOL } from './index';
 import { getMetadata, getKnexEvents } from './test-utils';
 import type { QueryData } from './test-utils';
 
@@ -122,12 +122,13 @@ describe('knexPrepared integration', () => {
 
     const query = knex.prepared('users').select('*');
     const sql = query.toSQL();
+    const metadata = getMetadata(query);
 
-    // Simulate query execution by emitting event with builder
+    // Simulate query execution by emitting event with queryContext
     (knex as unknown as { emit: (event: string, data: unknown) => void }).emit('query', {
       sql: sql.sql,
       bindings: sql.bindings,
-      __knexQueryBuilder: query,
+      queryContext: metadata ? { [PREPARED_SYMBOL]: metadata } : {},
     });
 
     expect(capturedQueryData).not.toBeNull();

@@ -24,7 +24,7 @@ describe('attachPreparedStatementHook', () => {
     const queryData: QueryData = {
       sql: 'SELECT * FROM users WHERE id = ?',
       bindings: [1],
-      __knexQueryBuilder: {
+      queryContext: {
         [PREPARED_SYMBOL]: { name: 'auto' } as PreparedMetadata,
       },
     };
@@ -40,7 +40,7 @@ describe('attachPreparedStatementHook', () => {
     const queryData: QueryData = {
       sql: 'SELECT * FROM users',
       bindings: [],
-      __knexQueryBuilder: {
+      queryContext: {
         [PREPARED_SYMBOL]: { name: 'custom-query-name' } as PreparedMetadata,
       },
     };
@@ -54,7 +54,7 @@ describe('attachPreparedStatementHook', () => {
     const queryData: QueryData = {
       sql: 'SELECT * FROM users',
       bindings: [],
-      __knexQueryBuilder: {
+      queryContext: {
         [PREPARED_SYMBOL]: { name: null } as PreparedMetadata,
       },
     };
@@ -68,7 +68,7 @@ describe('attachPreparedStatementHook', () => {
     const queryData: QueryData = {
       sql: 'SELECT * FROM users',
       bindings: [],
-      __knexQueryBuilder: {},
+      queryContext: {},
     };
 
     (knex as unknown as { emit: (event: string, data: unknown) => void }).emit('query', queryData);
@@ -93,7 +93,7 @@ describe('attachPreparedStatementHook', () => {
     const queryData1: QueryData = {
       sql,
       bindings: [true],
-      __knexQueryBuilder: {
+      queryContext: {
         [PREPARED_SYMBOL]: { name: 'auto' } as PreparedMetadata,
       },
     };
@@ -101,7 +101,7 @@ describe('attachPreparedStatementHook', () => {
     const queryData2: QueryData = {
       sql,
       bindings: [false],
-      __knexQueryBuilder: {
+      queryContext: {
         [PREPARED_SYMBOL]: { name: 'auto' } as PreparedMetadata,
       },
     };
@@ -117,7 +117,7 @@ describe('attachPreparedStatementHook', () => {
     const queryData1: QueryData = {
       sql: 'SELECT * FROM users',
       bindings: [],
-      __knexQueryBuilder: {
+      queryContext: {
         [PREPARED_SYMBOL]: { name: 'auto' } as PreparedMetadata,
       },
     };
@@ -125,7 +125,7 @@ describe('attachPreparedStatementHook', () => {
     const queryData2: QueryData = {
       sql: 'SELECT * FROM posts',
       bindings: [],
-      __knexQueryBuilder: {
+      queryContext: {
         [PREPARED_SYMBOL]: { name: 'auto' } as PreparedMetadata,
       },
     };
@@ -139,7 +139,7 @@ describe('attachPreparedStatementHook', () => {
   it('should handle missing SQL gracefully for auto-generation', () => {
     const queryData: Partial<QueryData> = {
       bindings: [],
-      __knexQueryBuilder: {
+      queryContext: {
         [PREPARED_SYMBOL]: { name: 'auto' } as PreparedMetadata,
       },
     };
@@ -160,7 +160,7 @@ describe('attachPreparedStatementHook', () => {
     const queryData = {
       sql: 123,
       bindings: [],
-      __knexQueryBuilder: {
+      queryContext: {
         [PREPARED_SYMBOL]: { name: 'auto' } as PreparedMetadata,
       },
     } as unknown as QueryData;

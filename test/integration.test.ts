@@ -144,54 +144,125 @@ describe.skipIf(shouldSkip)('Integration tests with PostgreSQL', () => {
   });
 
   describe('Prepared statement caching verification', () => {
-    it('should use the same prepared statement for identical queries', async () => {
-      // Execute the same query multiple times
-      const query1 = await knex.prepared('users').select('*').where('active', true);
-      const query2 = await knex.prepared('users').select('*').where('active', true);
-      const query3 = await knex.prepared('users').select('*').where('active', true);
+    it('should create prepared statements in PostgreSQL', async () => {
+      // Use a raw connection to ensure all queries are on the same connection
+      await knex.raw('SELECT 1', [], {
+        connection: async (connection) => {
+          // Execute queries with prepared statements using the same connection
+          await knex('users')
+            .prepared()
+            .select('*')
+            .where('active', true)
+            .connection(connection);
+          await knex('users')
+            .prepared()
+            .select('*')
+            .where('active', true)
+            .connection(connection);
 
-      expect(query1).toHaveLength(2);
-      expect(query2).toHaveLength(2);
-      expect(query3).toHaveLength(2);
+          // Query pg_prepared_statements on the same connection
+          const result = await knex
+            .raw<{ rows: Array<{ name: string; statement: string }> }>(
+              'SELECT name, statement FROM pg_prepared_statements WHERE name LIKE ?',
+              ['auto-%']
+            )
+            .connection(connection);
 
-      // Query pg_prepared_statements to verify prepared statement exists
-      const preparedStatements = await knex.raw<{ rows: Array<{ name: string }> }>(
-        'SELECT name FROM pg_prepared_statements WHERE name LIKE ?',
-        ['auto-%']
-      );
+          // Should have at least one prepared statement
+          expect(result.rows.length).toBeGreaterThan(0);
+          expect(result.rows[0].name).toMatch(/^auto-[0-9a-f]{16}$/);
+          expect(result.rows[0].statement).toContain('SELECT');
+        },
+      });
+    });
 
-      // Should have at least one prepared statement with auto- prefix
-      expect(preparedStatements.rows.length).toBeGreaterThan(0);
+    it('should reuse the same prepared statement for identical queries', async () => {
+      await knex.raw('SELECT 1', [], {
+        connection: async (connection) => {
+          // Execute the same query multiple times
+          await knex('users')
+            .prepared()
+            .select('*')
+            .where('active', true)
+            .connection(connection);
+          await knex('users')
+            .prepared()
+            .select('*')
+            .where('active', true)
+            .connection(connection);
+          await knex('users')
+            .prepared()
+            .select('*')
+            .where('active', true)
+            .connection(connection);
+
+          // Check that only ONE prepared statement was created for this SQL
+          const result = await knex
+            .raw<{ rows: Array<{ name: string }> }>(
+              "SELECT name FROM pg_prepared_statements WHERE statement LIKE '%active%'"
+            )
+            .connection(connection);
+
+          // Should have exactly 1 prepared statement (reused 3 times)
+          expect(result.rows.length).toBe(1);
+          expect(result.rows[0].name).toMatch(/^auto-[0-9a-f]{16}$/);
+        },
+      });
     });
 
     it('should create different prepared statements for different queries', async () => {
-      // Execute different queries
-      await knex.prepared('users').select('*').where('active', true);
-      await knex.prepared('users').select('*').where('active', false);
-      await knex.prepared('posts').select('*').where('published', true);
+      await knex.raw('SELECT 1', [], {
+        connection: async (connection) => {
+          // Execute queries with different SQL
+          await knex('users')
+            .prepared()
+            .select('*')
+            .where('active', true)
+            .connection(connection);
+          await knex('users').prepared().select('id', 'name').connection(connection);
+          await knex('posts')
+            .prepared()
+            .select('*')
+            .where('published', true)
+            .connection(connection);
 
-      // Query pg_prepared_statements
-      const preparedStatements = await knex.raw<{ rows: Array<{ name: string }> }>(
-        'SELECT name FROM pg_prepared_statements WHERE name LIKE ?',
-        ['auto-%']
-      );
+          // Query all auto-generated prepared statements
+          const result = await knex
+            .raw<{ rows: Array<{ name: string }> }>(
+              'SELECT name FROM pg_prepared_statements WHERE name LIKE ?',
+              ['auto-%']
+            )
+            .connection(connection);
 
-      // Should have multiple different prepared statements
-      expect(preparedStatements.rows.length).toBeGreaterThanOrEqual(3);
+          // Should have at least 3 different prepared statements
+          expect(result.rows.length).toBeGreaterThanOrEqual(3);
+        },
+      });
     });
 
     it('should use custom prepared statement names', async () => {
-      // Execute query with custom name
-      await knex('users').prepared('my-custom-query').select('*').where('id', userIds.user1Id);
+      await knex.raw('SELECT 1', [], {
+        connection: async (connection) => {
+          // Execute query with custom name
+          await knex('users')
+            .prepared('my-custom-query')
+            .select('*')
+            .where('id', userIds.user1Id)
+            .connection(connection);
 
-      // Query pg_prepared_statements
-      const preparedStatements = await knex.raw<{ rows: Array<{ name: string }> }>(
-        'SELECT name FROM pg_prepared_statements WHERE name = ?',
-        ['my-custom-query']
-      );
+          // Verify the custom name appears in pg_prepared_statements
+          const result = await knex
+            .raw<{ rows: Array<{ name: string; statement: string }> }>(
+              'SELECT name, statement FROM pg_prepared_statements WHERE name = ?',
+              ['my-custom-query']
+            )
+            .connection(connection);
 
-      expect(preparedStatements.rows).toHaveLength(1);
-      expect(preparedStatements.rows[0].name).toBe('my-custom-query');
+          expect(result.rows).toHaveLength(1);
+          expect(result.rows[0].name).toBe('my-custom-query');
+          expect(result.rows[0].statement).toContain('SELECT');
+        },
+      });
     });
   });
 
