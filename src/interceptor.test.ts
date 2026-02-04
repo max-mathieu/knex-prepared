@@ -6,125 +6,7 @@ import type { PreparedMetadata } from './query-builder';
 import { getKnexEvents } from './test-utils';
 import type { QueryData } from './test-utils';
 
-describe('attachPreparedStatementHook', () => {
-  let knex: ReturnType<typeof knexPrepared>;
-
-  beforeAll(() => {
-    knex = knexPrepared(Knex({ client: 'pg' }));
-  });
-
-  it('should attach query event listener', () => {
-    const listeners = getKnexEvents(knex)?.query;
-    expect(listeners).toBeDefined();
-  });
-
-  it('should inject auto-generated name when metadata.name is "auto"', () => {
-    const queryData: QueryData = {
-      sql: 'SELECT * FROM users WHERE id = ?',
-      bindings: [1],
-      queryContext: {
-        [PREPARED_SYMBOL]: { name: 'auto' } as PreparedMetadata,
-      },
-    };
-
-    // Simulate the query event
-    (knex as unknown as { emit: (event: string, data: unknown) => void }).emit('query', queryData);
-
-    expect(queryData.options?.name).toBeDefined();
-    expect(queryData.options?.name).toMatch(/^auto-[0-9a-f]{16}$/);
-  });
-
-  it('should inject custom name when metadata.name is a string', () => {
-    const queryData: QueryData = {
-      sql: 'SELECT * FROM users',
-      bindings: [],
-      queryContext: {
-        [PREPARED_SYMBOL]: { name: 'custom-query-name' } as PreparedMetadata,
-      },
-    };
-
-    (knex as unknown as { emit: (event: string, data: unknown) => void }).emit('query', queryData);
-
-    expect(queryData.options?.name).toBe('custom-query-name');
-  });
-
-  it('should not inject name when metadata.name is null', () => {
-    const queryData: QueryData = {
-      sql: 'SELECT * FROM users',
-      bindings: [],
-      queryContext: {
-        [PREPARED_SYMBOL]: { name: null } as PreparedMetadata,
-      },
-    };
-
-    (knex as unknown as { emit: (event: string, data: unknown) => void }).emit('query', queryData);
-
-    expect(queryData.options?.name).toBeUndefined();
-  });
-
-  it('should not inject name when no metadata exists', () => {
-    const queryData: QueryData = {
-      sql: 'SELECT * FROM users',
-      bindings: [],
-      queryContext: {},
-    };
-
-    (knex as unknown as { emit: (event: string, data: unknown) => void }).emit('query', queryData);
-
-    expect(queryData.options?.name).toBeUndefined();
-  });
-
-  it('should handle queries with same SQL getting same name', () => {
-    const sql = 'SELECT * FROM users WHERE active = ?';
-
-    const queryData1: QueryData = {
-      sql,
-      bindings: [true],
-      queryContext: {
-        [PREPARED_SYMBOL]: { name: 'auto' } as PreparedMetadata,
-      },
-    };
-
-    const queryData2: QueryData = {
-      sql,
-      bindings: [false],
-      queryContext: {
-        [PREPARED_SYMBOL]: { name: 'auto' } as PreparedMetadata,
-      },
-    };
-
-    (knex as unknown as { emit: (event: string, data: unknown) => void }).emit('query', queryData1);
-    (knex as unknown as { emit: (event: string, data: unknown) => void }).emit('query', queryData2);
-
-    expect(queryData1.options?.name).toBe(queryData2.options?.name);
-    expect(queryData1.options?.name).toMatch(/^auto-[0-9a-f]{16}$/);
-  });
-
-  it('should handle queries with different SQL getting different names', () => {
-    const queryData1: QueryData = {
-      sql: 'SELECT * FROM users',
-      bindings: [],
-      queryContext: {
-        [PREPARED_SYMBOL]: { name: 'auto' } as PreparedMetadata,
-      },
-    };
-
-    const queryData2: QueryData = {
-      sql: 'SELECT * FROM posts',
-      bindings: [],
-      queryContext: {
-        [PREPARED_SYMBOL]: { name: 'auto' } as PreparedMetadata,
-      },
-    };
-
-    (knex as unknown as { emit: (event: string, data: unknown) => void }).emit('query', queryData1);
-    (knex as unknown as { emit: (event: string, data: unknown) => void }).emit('query', queryData2);
-
-    expect(queryData1.options?.name).not.toBe(queryData2.options?.name);
-  });
-});
-
-describe('generatePreparedStatementName (via interceptor)', () => {
+describe('generatePreparedStatementName', () => {
   it('should generate a name with auto- prefix by default', () => {
     const knex = knexPrepared(Knex({ client: 'pg' }));
     const queryData: QueryData = {
@@ -281,7 +163,7 @@ describe('IN clause rewriting', () => {
   it('should rewrite IN clause to = ANY() with integer array', () => {
     const knex = knexPrepared(Knex({ client: 'pg' }));
     const queryData: QueryData = {
-      sql: 'select * from users where id in (?, ?, ?)',
+      sql: 'select * from users where id in ($1, $2, $3)',
       bindings: [1, 2, 3],
       queryContext: {
         [PREPARED_SYMBOL]: { name: 'auto' } as PreparedMetadata,
@@ -298,7 +180,7 @@ describe('IN clause rewriting', () => {
   it('should rewrite NOT IN clause to <> ALL() with text array', () => {
     const knex = knexPrepared(Knex({ client: 'pg' }));
     const queryData: QueryData = {
-      sql: 'select * from users where status not in (?, ?)',
+      sql: 'select * from users where status not in ($1, $2)',
       bindings: ['inactive', 'banned'],
       queryContext: {
         [PREPARED_SYMBOL]: { name: 'auto' } as PreparedMetadata,
@@ -315,7 +197,7 @@ describe('IN clause rewriting', () => {
   it('should handle multiple IN clauses', () => {
     const knex = knexPrepared(Knex({ client: 'pg' }));
     const queryData: QueryData = {
-      sql: 'select * from users where id in (?, ?) and status in (?, ?)',
+      sql: 'select * from users where id in ($1, $2) and status in ($3, $4)',
       bindings: [1, 2, 'active', 'pending'],
       queryContext: {
         [PREPARED_SYMBOL]: { name: 'auto' } as PreparedMetadata,
@@ -335,7 +217,7 @@ describe('IN clause rewriting', () => {
   it('should preserve bindings after IN clause', () => {
     const knex = knexPrepared(Knex({ client: 'pg' }));
     const queryData: QueryData = {
-      sql: 'select * from users where id in (?, ?) and active = ?',
+      sql: 'select * from users where id in ($1, $2) and active = $3',
       bindings: [1, 2, true],
       queryContext: {
         [PREPARED_SYMBOL]: { name: 'auto' } as PreparedMetadata,
@@ -345,7 +227,7 @@ describe('IN clause rewriting', () => {
     (knex as unknown as { emit: (event: string, data: unknown) => void }).emit('query', queryData);
 
     expect(queryData.sql).toContain('id = ANY($1::int[])');
-    expect(queryData.sql).toContain('active = ?');
+    expect(queryData.sql).toContain('active = $2');
     expect(queryData.bindings).toEqual([[1, 2], true]);
   });
 
@@ -400,7 +282,7 @@ describe('IN clause rewriting', () => {
   it('should handle case insensitive IN clause matching', () => {
     const knex = knexPrepared(Knex({ client: 'pg' }));
     const queryData: QueryData = {
-      sql: 'SELECT * FROM users WHERE id IN (?, ?) AND status Not In (?, ?)',
+      sql: 'SELECT * FROM users WHERE id IN ($1, $2) AND status Not In ($3, $4)',
       bindings: [1, 2, 'inactive', 'banned'],
       queryContext: {
         [PREPARED_SYMBOL]: { name: 'auto' } as PreparedMetadata,
@@ -416,7 +298,7 @@ describe('IN clause rewriting', () => {
   it('should handle quoted column names', () => {
     const knex = knexPrepared(Knex({ client: 'pg' }));
     const queryData: QueryData = {
-      sql: 'select * from users where "userId" in (?, ?)',
+      sql: 'select * from users where "userId" in ($1, $2)',
       bindings: [1, 2],
       queryContext: {
         [PREPARED_SYMBOL]: { name: 'auto' } as PreparedMetadata,
@@ -433,7 +315,7 @@ describe('IN clause rewriting', () => {
 
     // Boolean
     const queryData1: QueryData = {
-      sql: 'select * from users where active in (?, ?)',
+      sql: 'select * from users where active in ($1, $2)',
       bindings: [true, false],
       queryContext: { [PREPARED_SYMBOL]: { name: 'auto' } as PreparedMetadata },
     };
@@ -442,7 +324,7 @@ describe('IN clause rewriting', () => {
 
     // Float
     const queryData2: QueryData = {
-      sql: 'select * from products where price in (?, ?)',
+      sql: 'select * from products where price in ($1, $2)',
       bindings: [10.5, 20.5],
       queryContext: { [PREPARED_SYMBOL]: { name: 'auto' } as PreparedMetadata },
     };
@@ -453,11 +335,129 @@ describe('IN clause rewriting', () => {
     const date1 = new Date('2024-01-01');
     const date2 = new Date('2024-01-02');
     const queryData3: QueryData = {
-      sql: 'select * from events where date in (?, ?)',
+      sql: 'select * from events where date in ($1, $2)',
       bindings: [date1, date2],
       queryContext: { [PREPARED_SYMBOL]: { name: 'auto' } as PreparedMetadata },
     };
     (knex as unknown as { emit: (event: string, data: unknown) => void }).emit('query', queryData3);
     expect(queryData3.sql).toContain('= ANY($1::timestamp[])');
+  });
+});
+
+describe('attachPreparedStatementHook', () => {
+  let knex: ReturnType<typeof knexPrepared>;
+
+  beforeAll(() => {
+    knex = knexPrepared(Knex({ client: 'pg' }));
+  });
+
+  it('should attach query event listener', () => {
+    const listeners = getKnexEvents(knex)?.query;
+    expect(listeners).toBeDefined();
+  });
+
+  it('should inject auto-generated name when metadata.name is "auto"', () => {
+    const queryData: QueryData = {
+      sql: 'SELECT * FROM users WHERE id = ?',
+      bindings: [1],
+      queryContext: {
+        [PREPARED_SYMBOL]: { name: 'auto' } as PreparedMetadata,
+      },
+    };
+
+    // Simulate the query event
+    (knex as unknown as { emit: (event: string, data: unknown) => void }).emit('query', queryData);
+
+    expect(queryData.options?.name).toBeDefined();
+    expect(queryData.options?.name).toMatch(/^auto-[0-9a-f]{16}$/);
+  });
+
+  it('should inject custom name when metadata.name is a string', () => {
+    const queryData: QueryData = {
+      sql: 'SELECT * FROM users',
+      bindings: [],
+      queryContext: {
+        [PREPARED_SYMBOL]: { name: 'custom-query-name' } as PreparedMetadata,
+      },
+    };
+
+    (knex as unknown as { emit: (event: string, data: unknown) => void }).emit('query', queryData);
+
+    expect(queryData.options?.name).toBe('custom-query-name');
+  });
+
+  it('should not inject name when metadata.name is null', () => {
+    const queryData: QueryData = {
+      sql: 'SELECT * FROM users',
+      bindings: [],
+      queryContext: {
+        [PREPARED_SYMBOL]: { name: null } as PreparedMetadata,
+      },
+    };
+
+    (knex as unknown as { emit: (event: string, data: unknown) => void }).emit('query', queryData);
+
+    expect(queryData.options?.name).toBeUndefined();
+  });
+
+  it('should not inject name when no metadata exists', () => {
+    const queryData: QueryData = {
+      sql: 'SELECT * FROM users',
+      bindings: [],
+      queryContext: {},
+    };
+
+    (knex as unknown as { emit: (event: string, data: unknown) => void }).emit('query', queryData);
+
+    expect(queryData.options?.name).toBeUndefined();
+  });
+
+  it('should handle queries with same SQL getting same name', () => {
+    const sql = 'SELECT * FROM users WHERE active = ?';
+
+    const queryData1: QueryData = {
+      sql,
+      bindings: [true],
+      queryContext: {
+        [PREPARED_SYMBOL]: { name: 'auto' } as PreparedMetadata,
+      },
+    };
+
+    const queryData2: QueryData = {
+      sql,
+      bindings: [false],
+      queryContext: {
+        [PREPARED_SYMBOL]: { name: 'auto' } as PreparedMetadata,
+      },
+    };
+
+    (knex as unknown as { emit: (event: string, data: unknown) => void }).emit('query', queryData1);
+    (knex as unknown as { emit: (event: string, data: unknown) => void }).emit('query', queryData2);
+
+    expect(queryData1.options?.name).toBe(queryData2.options?.name);
+    expect(queryData1.options?.name).toMatch(/^auto-[0-9a-f]{16}$/);
+  });
+
+  it('should handle queries with different SQL getting different names', () => {
+    const queryData1: QueryData = {
+      sql: 'SELECT * FROM users',
+      bindings: [],
+      queryContext: {
+        [PREPARED_SYMBOL]: { name: 'auto' } as PreparedMetadata,
+      },
+    };
+
+    const queryData2: QueryData = {
+      sql: 'SELECT * FROM posts',
+      bindings: [],
+      queryContext: {
+        [PREPARED_SYMBOL]: { name: 'auto' } as PreparedMetadata,
+      },
+    };
+
+    (knex as unknown as { emit: (event: string, data: unknown) => void }).emit('query', queryData1);
+    (knex as unknown as { emit: (event: string, data: unknown) => void }).emit('query', queryData2);
+
+    expect(queryData1.options?.name).not.toBe(queryData2.options?.name);
   });
 });

@@ -1,5 +1,6 @@
 import { createHash } from 'crypto';
 import type { Knex } from 'knex';
+import { typedRegExp } from 'ts-regexp';
 import {
   PREPARED_SYMBOL,
   KNEX_PREPARED_OPTIONS_SYMBOL,
@@ -18,6 +19,20 @@ interface KnexWithOptions extends Knex {
   [KNEX_PREPARED_OPTIONS_SYMBOL]?: ResolvedKnexPreparedOptions;
 }
 
+/**
+ * Generates a deterministic prepared statement name from SQL using SHA-256 hashing.
+ * Format: `{prefix}-{first N hex chars of hash}`. Same SQL always produces the same name.
+ */
+const generatePreparedStatementName = (
+  sql: string,
+  options: ResolvedKnexPreparedOptions
+): string => {
+  const normalized = sql.trim().replace(/\s+/g, ' ');
+  const hash = createHash('sha256').update(normalized).digest('hex');
+  return `${options.autoPrefix}-${hash.substring(0, options.autoHashLength)}`;
+};
+
+
 interface InClauseMatch {
   fullMatch: string;
   column: string;
@@ -28,23 +43,23 @@ interface InClauseMatch {
 
 /**
  * Finds all IN clause patterns in the SQL query.
- * Supports both ? (Knex) and $n (PostgreSQL) parameter notation.
+ * Only supports $n (PostgreSQL) parameter notation.
  */
 const findInClauses = (sql: string): InClauseMatch[] => {
-  // Match: [table.]column [NOT] IN (?, ?, ...) or IN ($1, $2, ...)
-  // This regex matches both Knex-style (?) and PostgreSQL-style ($n) parameters
-  const regex =
-    /(["']?\w+["']?\.)?(["']?\w+["']?)\s+(not\s+)?in\s*\(((?:\?|\$\d+)(?:,\s*(?:\?|\$\d+))*)\)/gi;
+  // Match: column [NOT] IN ($1, $2, ...) - capture column name and placeholders
+  const regex = typedRegExp(
+    '(?<column>\\S+)\\s+(?<inOrNotIn>not\\s+in|in)\\s*\\((?<placeholders>\\$\\d+(?:,\\s*\\$\\d+)*)\\)',
+    'gi'
+  );
   const matches: InClauseMatch[] = [];
-  let match: RegExpExecArray | null;
 
-  while ((match = regex.exec(sql)) !== null) {
+  for (const match of regex.matchAllIn(sql)) {
     const fullMatch = match[0];
-    const column = match[2];
-    const isNotIn = Boolean(match[3]);
-    const placeholders = match[4];
-    // Count both ? and $n style placeholders
-    const placeholderMatches = placeholders.match(/(\?|\$\d+)/g) || [];
+    const column = match.groups.column;
+    const isNotIn = match.groups.inOrNotIn.toLowerCase() === 'not in';
+    const placeholders = match.groups.placeholders;
+    // Count $n style placeholders only
+    const placeholderMatches = placeholders.match(/\$\d+/g) || [];
     const placeholderCount = placeholderMatches.length;
 
     matches.push({
@@ -98,9 +113,9 @@ const rewriteInClausesInQuery = (
   const newBindings = [...bindings];
 
   for (const match of matches) {
-    // Calculate actual binding index by counting placeholders before this match
+    // Calculate actual binding index by counting $n placeholders before this match
     const sqlBeforeMatch = sql.substring(0, match.index);
-    const placeholdersBefore = (sqlBeforeMatch.match(/(\?|\$\d+)/g) || []).length;
+    const placeholdersBefore = (sqlBeforeMatch.match(/\$\d+/g) || []).length;
     const startIndex = placeholdersBefore;
 
     // Extract the values for this IN clause
@@ -112,37 +127,34 @@ const rewriteInClausesInQuery = (
     // Determine the parameter number for the rewritten SQL
     // Count how many parameters exist in the new SQL before this point
     const newSqlBeforeMatch = newSql.substring(0, match.index);
-    const paramsBeforeInNewSql = (newSqlBeforeMatch.match(/(\?|\$\d+)/g) || []).length;
+    const paramsBeforeInNewSql = (newSqlBeforeMatch.match(/\$\d+/g) || []).length;
     const paramNumber = paramsBeforeInNewSql + 1;
 
     // Create the replacement using $n notation
     const operator = match.isNotIn ? '<> ALL' : '= ANY';
     const replacement = `${match.column} ${operator}($${paramNumber}::${arrayType}[])`;
 
+    // Get the SQL before and after this match
+    const beforeMatch = newSql.substring(0, match.index);
+    const afterMatch = newSql.substring(match.index + match.fullMatch.length);
+    
+    // Renumber placeholders in the remaining SQL
+    // We went from match.placeholderCount parameters to 1, so we need to shift down by (match.placeholderCount - 1)
+    const shift = match.placeholderCount - 1;
+    const renumbered = afterMatch.replace(/\$(\d+)/g, (_, num) => {
+      const oldNum = parseInt(num, 10);
+      const newNum = oldNum - shift;
+      return `$${newNum}`;
+    });
+
     // Replace in SQL (working backwards from end)
-    newSql =
-      newSql.substring(0, match.index) +
-      replacement +
-      newSql.substring(match.index + match.fullMatch.length);
+    newSql = beforeMatch + replacement + renumbered;
 
     // Insert array as single binding
     newBindings.splice(startIndex, 0, values);
   }
 
   return { sql: newSql, bindings: newBindings };
-};
-
-/**
- * Generates a deterministic prepared statement name from SQL using SHA-256 hashing.
- * Format: `{prefix}-{first N hex chars of hash}`. Same SQL always produces the same name.
- */
-const generatePreparedStatementName = (
-  sql: string,
-  options: ResolvedKnexPreparedOptions
-): string => {
-  const normalized = sql.trim().replace(/\s+/g, ' ');
-  const hash = createHash('sha256').update(normalized).digest('hex');
-  return `${options.autoPrefix}-${hash.substring(0, options.autoHashLength)}`;
 };
 
 /**

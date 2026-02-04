@@ -2,7 +2,14 @@
   "name": "knex-prepared",
   "version": "0.1.0",
   "description": "Extends Knex.js to support PostgreSQL prepared statements with simple, type-safe APIs",
-  "keywords": ["knex", "postgresql", "prepared-statements", "database", "sql", "performance"],
+  "keywords": [
+    "knex",
+    "postgresql",
+    "prepared-statements",
+    "database",
+    "sql",
+    "performance"
+  ],
   "license": "MIT",
   "author": "Max Mathieu",
   "repository": {
@@ -59,6 +66,7 @@
     "knex": "^3.1.0",
     "pg": "^8.11.3",
     "prettier": "^3.2.4",
+    "ts-regexp": "^0.2.1",
     "tsup": "^8.0.1",
     "tsx": "^4.7.0",
     "typescript": "^5.3.3",
