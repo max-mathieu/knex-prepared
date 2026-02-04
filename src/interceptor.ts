@@ -5,7 +5,7 @@ import { generatePreparedStatementName } from './hash';
 interface QueryData {
   queryContext?: { [PREPARED_SYMBOL]?: PreparedMetadata };
   sql?: string | unknown;
-  name?: string;
+  options?: Record<string, unknown>;
 }
 
 /**
@@ -20,13 +20,19 @@ export function attachPreparedStatementHook(knex: Knex): void {
       return;
     }
 
+    let preparedName: string;
     if (metadata.name === 'auto') {
       if (typeof queryData.sql !== 'string') {
         return;
       }
-      queryData.name = generatePreparedStatementName(queryData.sql);
+      preparedName = generatePreparedStatementName(queryData.sql);
     } else {
-      queryData.name = metadata.name;
+      preparedName = metadata.name;
     }
+
+    // Set name in options object (not directly on queryData)
+    // The pg driver expects: queryConfig = extend(queryConfig, obj.options)
+    queryData.options = queryData.options || {};
+    queryData.options.name = preparedName;
   });
 }

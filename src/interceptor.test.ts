@@ -32,8 +32,8 @@ describe('attachPreparedStatementHook', () => {
     // Simulate the query event
     (knex as unknown as { emit: (event: string, data: unknown) => void }).emit('query', queryData);
 
-    expect(queryData.name).toBeDefined();
-    expect(queryData.name).toMatch(/^auto-[0-9a-f]{16}$/);
+    expect(queryData.options?.name).toBeDefined();
+    expect(queryData.options?.name).toMatch(/^auto-[0-9a-f]{16}$/);
   });
 
   it('should inject custom name when metadata.name is a string', () => {
@@ -47,7 +47,7 @@ describe('attachPreparedStatementHook', () => {
 
     (knex as unknown as { emit: (event: string, data: unknown) => void }).emit('query', queryData);
 
-    expect(queryData.name).toBe('custom-query-name');
+    expect(queryData.options?.name).toBe('custom-query-name');
   });
 
   it('should not inject name when metadata.name is null', () => {
@@ -61,7 +61,7 @@ describe('attachPreparedStatementHook', () => {
 
     (knex as unknown as { emit: (event: string, data: unknown) => void }).emit('query', queryData);
 
-    expect(queryData.name).toBeUndefined();
+    expect(queryData.options?.name).toBeUndefined();
   });
 
   it('should not inject name when no metadata exists', () => {
@@ -73,7 +73,7 @@ describe('attachPreparedStatementHook', () => {
 
     (knex as unknown as { emit: (event: string, data: unknown) => void }).emit('query', queryData);
 
-    expect(queryData.name).toBeUndefined();
+    expect(queryData.options?.name).toBeUndefined();
   });
 
   it('should not inject name when no builder is available', () => {
@@ -84,7 +84,7 @@ describe('attachPreparedStatementHook', () => {
 
     (knex as unknown as { emit: (event: string, data: unknown) => void }).emit('query', queryData);
 
-    expect(queryData.name).toBeUndefined();
+    expect(queryData.options?.name).toBeUndefined();
   });
 
   it('should handle queries with same SQL getting same name', () => {
@@ -109,8 +109,8 @@ describe('attachPreparedStatementHook', () => {
     (knex as unknown as { emit: (event: string, data: unknown) => void }).emit('query', queryData1);
     (knex as unknown as { emit: (event: string, data: unknown) => void }).emit('query', queryData2);
 
-    expect(queryData1.name).toBe(queryData2.name);
-    expect(queryData1.name).toMatch(/^auto-[0-9a-f]{16}$/);
+    expect(queryData1.options?.name).toBe(queryData2.options?.name);
+    expect(queryData1.options?.name).toMatch(/^auto-[0-9a-f]{16}$/);
   });
 
   it('should handle queries with different SQL getting different names', () => {
@@ -133,7 +133,7 @@ describe('attachPreparedStatementHook', () => {
     (knex as unknown as { emit: (event: string, data: unknown) => void }).emit('query', queryData1);
     (knex as unknown as { emit: (event: string, data: unknown) => void }).emit('query', queryData2);
 
-    expect(queryData1.name).not.toBe(queryData2.name);
+    expect(queryData1.options?.name).not.toBe(queryData2.options?.name);
   });
 
   it('should handle missing SQL gracefully for auto-generation', () => {

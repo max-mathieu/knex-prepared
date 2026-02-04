@@ -160,25 +160,36 @@ describe.skipIf(shouldSkip)('Integration tests with PostgreSQL', () => {
         // Should have at least one prepared statement
         expect(result.rows.length).toBeGreaterThan(0);
         expect(result.rows[0].name).toMatch(/^auto-[0-9a-f]{16}$/);
-        expect(result.rows[0].statement).toContain('SELECT');
+        expect(result.rows[0].statement.toLowerCase()).toContain('select');
       });
     });
 
     it('should reuse the same prepared statement for identical queries', async () => {
       await knex.transaction(async (trx) => {
-        // Execute the same query multiple times
-        await trx('users').prepared().select('*').where('active', true);
-        await trx('users').prepared().select('*').where('active', true);
-        await trx('users').prepared().select('*').where('active', true);
+        // Use a unique query that hasn't been used in other tests
+        const uniqueValue = 'test-unique-email@example.com';
 
-        // Check that only ONE prepared statement was created for this SQL
-        const result = await trx.raw<{ rows: Array<{ name: string }> }>(
-          "SELECT name FROM pg_prepared_statements WHERE statement LIKE '%active%'"
+        // Get prepared statement count before
+        const beforeResult = await trx.raw<{ rows: Array<{ name: string }> }>(
+          'SELECT name FROM pg_prepared_statements WHERE name LIKE ?',
+          ['auto-%']
         );
+        const beforeCount = beforeResult.rows.length;
 
-        // Should have exactly 1 prepared statement (reused 3 times)
-        expect(result.rows.length).toBe(1);
-        expect(result.rows[0].name).toMatch(/^auto-[0-9a-f]{16}$/);
+        // Execute the same unique query multiple times
+        await trx('users').prepared().select('*').where('email', uniqueValue);
+        await trx('users').prepared().select('*').where('email', uniqueValue);
+        await trx('users').prepared().select('*').where('email', uniqueValue);
+
+        // Check that only ONE NEW prepared statement was created
+        const afterResult = await trx.raw<{ rows: Array<{ name: string }> }>(
+          'SELECT name FROM pg_prepared_statements WHERE name LIKE ?',
+          ['auto-%']
+        );
+        const afterCount = afterResult.rows.length;
+
+        // Should have created exactly 1 new prepared statement (reused 3 times)
+        expect(afterCount - beforeCount).toBe(1);
       });
     });
 
@@ -216,7 +227,7 @@ describe.skipIf(shouldSkip)('Integration tests with PostgreSQL', () => {
 
         expect(result.rows).toHaveLength(1);
         expect(result.rows[0].name).toBe('my-custom-query');
-        expect(result.rows[0].statement).toContain('SELECT');
+        expect(result.rows[0].statement.toLowerCase()).toContain('select');
       });
     });
 

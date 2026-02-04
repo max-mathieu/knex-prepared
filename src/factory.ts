@@ -23,6 +23,15 @@ export function addPreparedFactory(knex: Knex): Knex & { prepared: PreparedFacto
   ): PreparedQueryBuilder<TRecord, TResult> {
     const builder = knex<TRecord, TResult>(tableName);
     (builder as unknown as Record<symbol, PreparedMetadata>)[PREPARED_SYMBOL] = { name: 'auto' };
+
+    // Store metadata in queryContext so it's available in the query event
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const self = builder as any;
+    const metadata: PreparedMetadata = { name: 'auto' };
+    const existingContext = self.queryContext() || {};
+    const newContext = { ...existingContext, [PREPARED_SYMBOL]: metadata };
+    self.queryContext(newContext);
+
     return builder as PreparedQueryBuilder<TRecord, TResult>;
   };
 

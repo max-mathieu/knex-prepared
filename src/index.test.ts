@@ -132,8 +132,8 @@ describe('knexPrepared integration', () => {
     });
 
     expect(capturedQueryData).not.toBeNull();
-    expect(capturedQueryData!.name).toBeDefined();
-    expect(capturedQueryData!.name).toMatch(/^auto-[0-9a-f]{16}$/);
+    expect(capturedQueryData!.options?.name).toBeDefined();
+    expect(capturedQueryData!.options?.name).toMatch(/^auto-[0-9a-f]{16}$/);
   });
 
   it('should preserve Knex instance type and methods', () => {

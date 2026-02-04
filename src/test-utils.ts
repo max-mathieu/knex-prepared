@@ -13,7 +13,7 @@ export interface QueryBuilderWithMetadata extends Knex.QueryBuilder {
 export interface QueryData {
   sql: string;
   bindings: unknown[];
-  name?: string;
+  options?: { name?: string; [key: string]: unknown };
   queryContext?: { [PREPARED_SYMBOL]?: PreparedMetadata };
   [key: string]: unknown;
 }
