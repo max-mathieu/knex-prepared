@@ -34,6 +34,33 @@ describe.skipIf(shouldSkip)('Integration tests with PostgreSQL', () => {
     await knex.destroy();
   });
 
+  describe('Noop behavior', () => {
+    it('should not automatically prepare queries without explicit .prepared() call', async () => {
+      // Verify that knexPrepared() doesn't change default behavior
+      // Regular queries without .prepared() should work normally
+      const users = await knex('users').select('*').orderBy('id');
+      expect(users).toHaveLength(3);
+
+      // Verify queries work in transactions too
+      await knex.transaction(async (trx) => {
+        const transactionUsers = await trx('users').select('*').where('active', true);
+        expect(transactionUsers).toHaveLength(2);
+
+        // Only queries explicitly marked with .prepared() create prepared statements
+        await trx('users').prepared('explicit-test').select('*').where('id', userIds.user1Id);
+
+        const result = await trx.raw<{ rows: Array<{ name: string; statement: string }> }>(
+          'SELECT name, statement FROM pg_prepared_statements WHERE name = ?',
+          ['explicit-test']
+        );
+
+        // This explicit prepared statement should exist
+        expect(result.rows).toHaveLength(1);
+        expect(result.rows[0].name).toBe('explicit-test');
+      });
+    });
+  });
+
   describe('Factory method: knex.prepared(table)', () => {
     it('should execute SELECT query with auto-generated prepared statement', async () => {
       const users = await knex.prepared('users').select('*').orderBy('id');
@@ -246,68 +273,57 @@ describe.skipIf(shouldSkip)('Integration tests with PostgreSQL', () => {
   });
 
   describe('Complex queries', () => {
-    it('should handle queries with multiple WHERE clauses', async () => {
-      const results = await knex
+    it('should handle queries with WHERE clauses, ORDER BY, and LIMIT', async () => {
+      // Multiple WHERE clauses
+      const filtered = await knex
         .prepared('users')
         .select('*')
         .where('active', true)
         .where('name', 'like', 'A%');
 
-      expect(results).toHaveLength(1);
-      expect(results[0].name).toBe('Alice');
-    });
+      expect(filtered).toHaveLength(1);
+      expect(filtered[0].name).toBe('Alice');
 
-    it('should handle queries with WHERE IN', async () => {
-      const results = await knex
+      // WHERE IN
+      const inResults = await knex
         .prepared('users')
         .select('*')
         .whereIn('id', [userIds.user1Id, userIds.user2Id]);
 
-      expect(results).toHaveLength(2);
-    });
+      expect(inResults).toHaveLength(2);
 
-    it('should handle queries with ORDER BY and LIMIT', async () => {
-      const results = await knex.prepared('users').select('*').orderBy('name', 'asc').limit(2);
-
-      expect(results).toHaveLength(2);
-      expect(results[0].name).toBe('Alice');
-      expect(results[1].name).toBe('Bob');
-    });
-
-    it('should handle queries with OFFSET', async () => {
-      const results = await knex
+      // ORDER BY and LIMIT with OFFSET
+      const paginated = await knex
         .prepared('users')
         .select('*')
         .orderBy('name', 'asc')
         .limit(2)
         .offset(1);
 
-      expect(results).toHaveLength(2);
-      expect(results[0].name).toBe('Bob');
-      expect(results[1].name).toBe('Charlie');
+      expect(paginated).toHaveLength(2);
+      expect(paginated[0].name).toBe('Bob');
+      expect(paginated[1].name).toBe('Charlie');
     });
 
-    it('should handle queries with aggregations', async () => {
-      const result = await knex.prepared('users').count('* as count').where('active', true).first();
+    it('should handle aggregations and GROUP BY', async () => {
+      // COUNT aggregation
+      const count = await knex.prepared('users').count('* as count').where('active', true).first();
+      expect(count?.count).toBe('2');
 
-      expect(result?.count).toBe('2');
-    });
-
-    it('should handle queries with GROUP BY', async () => {
-      const results = await knex
+      // GROUP BY
+      const grouped = await knex
         .prepared('posts')
         .select('user_id')
         .count('* as post_count')
         .groupBy('user_id')
         .orderBy('user_id');
 
-      expect(results).toHaveLength(2);
-      expect(results[0].post_count).toBe('2');
-      expect(results[1].post_count).toBe('1');
+      expect(grouped).toHaveLength(2);
+      expect(grouped[0].post_count).toBe('2');
+      expect(grouped[1].post_count).toBe('1');
     });
 
     it('should handle LEFT JOIN queries', async () => {
-      // Create a user with no posts
       const [lonelyUser] = await knex('users')
         .insert({ name: 'Lonely', email: 'lonely@example.com' })
         .returning('*');
@@ -323,7 +339,6 @@ describe.skipIf(shouldSkip)('Integration tests with PostgreSQL', () => {
       const lonelyResult = results.find((r) => r.name === 'Lonely');
       expect(lonelyResult?.post_count).toBe('0');
 
-      // Clean up
       await knex('users').where('id', lonelyUser.id).delete();
     });
   });

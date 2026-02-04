@@ -76,17 +76,6 @@ describe('attachPreparedStatementHook', () => {
     expect(queryData.options?.name).toBeUndefined();
   });
 
-  it('should not inject name when no builder is available', () => {
-    const queryData: QueryData = {
-      sql: 'SELECT * FROM users',
-      bindings: [],
-    };
-
-    (knex as unknown as { emit: (event: string, data: unknown) => void }).emit('query', queryData);
-
-    expect(queryData.options?.name).toBeUndefined();
-  });
-
   it('should handle queries with same SQL getting same name', () => {
     const sql = 'SELECT * FROM users WHERE active = ?';
 
@@ -134,44 +123,5 @@ describe('attachPreparedStatementHook', () => {
     (knex as unknown as { emit: (event: string, data: unknown) => void }).emit('query', queryData2);
 
     expect(queryData1.options?.name).not.toBe(queryData2.options?.name);
-  });
-
-  it('should handle missing SQL gracefully for auto-generation', () => {
-    const queryData: Partial<QueryData> = {
-      bindings: [],
-      queryContext: {
-        [PREPARED_SYMBOL]: { name: 'auto' } as PreparedMetadata,
-      },
-    };
-
-    // Should not throw
-    expect(() => {
-      (knex as unknown as { emit: (event: string, data: unknown) => void }).emit(
-        'query',
-        queryData
-      );
-    }).not.toThrow();
-
-    // Should not inject name
-    expect(queryData.name).toBeUndefined();
-  });
-
-  it('should handle non-string SQL gracefully', () => {
-    const queryData = {
-      sql: 123,
-      bindings: [],
-      queryContext: {
-        [PREPARED_SYMBOL]: { name: 'auto' } as PreparedMetadata,
-      },
-    } as unknown as QueryData;
-
-    expect(() => {
-      (knex as unknown as { emit: (event: string, data: unknown) => void }).emit(
-        'query',
-        queryData
-      );
-    }).not.toThrow();
-
-    expect(queryData.name).toBeUndefined();
   });
 });

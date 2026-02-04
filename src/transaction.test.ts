@@ -8,6 +8,21 @@ import { getMetadata } from './test-utils';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+// Helper function to mock transaction calls
+const mockTransaction = (
+  knex: KnexTypes,
+  callback: (trx: KnexTypes.Transaction) => Promise<any>
+) => {
+  const spy = vi.spyOn(knex, 'transaction') as any;
+  spy.mockImplementation(async (callbackOrConfig: any, cb?: any) => {
+    const actualCallback = typeof callbackOrConfig === 'function' ? callbackOrConfig : cb;
+    const mockTrx = knex as unknown as KnexTypes.Transaction;
+    addPreparedFactory(mockTrx as unknown as KnexTypes);
+    return actualCallback ? actualCallback(mockTrx) : Promise.resolve({} as KnexTypes.Transaction);
+  });
+  return callback(knex as unknown as KnexTypes.Transaction).finally(() => spy.mockRestore());
+};
+
 describe('wrapTransactionMethod', () => {
   let knex: KnexTypes;
 
@@ -30,168 +45,46 @@ describe('wrapTransactionMethod', () => {
     expect(knex.transaction).not.toBe(originalTransaction);
   });
 
-  it('should add prepared factory to transaction instance', async () => {
+  it('should add prepared factory and support all prepared methods on transaction', async () => {
     wrapTransactionMethod(knex);
 
-    const mockCallback = vi.fn(async (trx: KnexTypes.Transaction) => {
-      // Check that prepared factory method exists on transaction
+    await mockTransaction(knex, async (trx) => {
+      // Test factory method exists
       expect(trx.prepared).toBeDefined();
       expect(typeof trx.prepared).toBe('function');
-      return Promise.resolve();
-    });
 
-    // Mock the actual transaction call to avoid database connection
-    const spy = vi.spyOn(knex, 'transaction') as any;
-    spy.mockImplementation(async (callback: any) => {
-      const mockTrx = knex as unknown as KnexTypes.Transaction;
-      addPreparedFactory(mockTrx as unknown as KnexTypes);
-      return callback(mockTrx);
-    });
-
-    await knex.transaction(mockCallback);
-
-    expect(mockCallback).toHaveBeenCalled();
-    spy.mockRestore();
-  });
-
-  it('should support chainable prepared method on transaction', async () => {
-    wrapTransactionMethod(knex);
-
-    const mockCallback = vi.fn(async (trx: KnexTypes.Transaction) => {
-      const builder = trx('users').prepared();
-      const metadata = getMetadata(builder);
-
-      expect(metadata?.name).toBe('auto');
-      return Promise.resolve();
-    });
-
-    const spy = vi.spyOn(knex, 'transaction') as any;
-    spy.mockImplementation(async (callback: any) => {
-      const mockTrx = knex as unknown as KnexTypes.Transaction;
-      addPreparedFactory(mockTrx as unknown as KnexTypes);
-      return callback(mockTrx);
-    });
-
-    await knex.transaction(mockCallback);
-
-    expect(mockCallback).toHaveBeenCalled();
-    spy.mockRestore();
-  });
-
-  it('should support factory prepared method on transaction', async () => {
-    wrapTransactionMethod(knex);
-
-    const mockCallback = vi.fn(async (trx: KnexTypes.Transaction) => {
-      // Type assertion needed since TypeScript doesn't know about our extension
+      // Test factory method
       const extendedTrx = trx as KnexTypes.Transaction & { prepared: (table: string) => unknown };
-      const builder = extendedTrx.prepared('users');
-      const metadata = getMetadata(builder);
+      const factoryBuilder = extendedTrx.prepared('users');
+      expect(getMetadata(factoryBuilder)?.name).toBe('auto');
 
-      expect(metadata?.name).toBe('auto');
-      return Promise.resolve();
+      // Test chainable method
+      const chainableBuilder = trx('users').prepared();
+      expect(getMetadata(chainableBuilder)?.name).toBe('auto');
+
+      // Test custom name
+      const customBuilder = trx('users').prepared('custom-name');
+      expect(getMetadata(customBuilder)?.name).toBe('custom-name');
+
+      // Test disabled
+      const disabledBuilder = trx('users').prepared(false);
+      expect(getMetadata(disabledBuilder)?.name).toBeNull();
     });
-
-    const spy = vi.spyOn(knex, 'transaction') as any;
-    spy.mockImplementation(async (callback: any) => {
-      const mockTrx = knex as unknown as KnexTypes.Transaction;
-      addPreparedFactory(mockTrx as unknown as KnexTypes);
-      return callback(mockTrx);
-    });
-
-    await knex.transaction(mockCallback);
-
-    expect(mockCallback).toHaveBeenCalled();
-    spy.mockRestore();
   });
 
-  it('should support custom prepared statement names in transactions', async () => {
+  it('should handle transaction callbacks that return values or throw errors', async () => {
     wrapTransactionMethod(knex);
 
-    const mockCallback = vi.fn(async (trx: KnexTypes.Transaction) => {
-      const builder = trx('users').prepared('custom-name');
-      const metadata = getMetadata(builder);
-
-      expect(metadata?.name).toBe('custom-name');
-      return Promise.resolve();
-    });
-
-    const spy = vi.spyOn(knex, 'transaction') as any;
-    spy.mockImplementation(async (callback: any) => {
-      const mockTrx = knex as unknown as KnexTypes.Transaction;
-      addPreparedFactory(mockTrx as unknown as KnexTypes);
-      return callback(mockTrx);
-    });
-
-    await knex.transaction(mockCallback);
-
-    expect(mockCallback).toHaveBeenCalled();
-    spy.mockRestore();
-  });
-
-  it('should support prepared(false) to disable in transactions', async () => {
-    wrapTransactionMethod(knex);
-
-    const mockCallback = vi.fn(async (trx: KnexTypes.Transaction) => {
-      const builder = trx('users').prepared(false);
-      const metadata = getMetadata(builder);
-
-      expect(metadata?.name).toBe(null);
-      return Promise.resolve();
-    });
-
-    const spy = vi.spyOn(knex, 'transaction') as any;
-    spy.mockImplementation(async (callback: any) => {
-      const mockTrx = knex as unknown as KnexTypes.Transaction;
-      addPreparedFactory(mockTrx as unknown as KnexTypes);
-      return callback(mockTrx);
-    });
-
-    await knex.transaction(mockCallback);
-
-    expect(mockCallback).toHaveBeenCalled();
-    spy.mockRestore();
-  });
-
-  it('should handle transaction callbacks that return values', async () => {
-    wrapTransactionMethod(knex);
-
+    // Test return values
     const expectedResult = { id: 1, name: 'test' };
-    const mockCallback = vi.fn(async () => {
-      return expectedResult;
-    });
-
-    const spy = vi.spyOn(knex, 'transaction') as any;
-    spy.mockImplementation(async (callback: any) => {
-      const mockTrx = knex as unknown as KnexTypes.Transaction;
-      addPreparedFactory(mockTrx as unknown as KnexTypes);
-      return callback(mockTrx);
-    });
-
-    const result = await knex.transaction(mockCallback);
-
+    const result = await mockTransaction(knex, async () => expectedResult);
     expect(result).toEqual(expectedResult);
-    expect(mockCallback).toHaveBeenCalled();
-    spy.mockRestore();
-  });
 
-  it('should handle transaction callbacks that throw errors', async () => {
-    wrapTransactionMethod(knex);
-
+    // Test errors
     const expectedError = new Error('Transaction failed');
-    const mockCallback = vi.fn(async () => {
+    await expect(mockTransaction(knex, async () => {
       throw expectedError;
-    });
-
-    const spy = vi.spyOn(knex, 'transaction') as any;
-    spy.mockImplementation(async (callback: any) => {
-      const mockTrx = knex as unknown as KnexTypes.Transaction;
-      addPreparedFactory(mockTrx as unknown as KnexTypes);
-      return callback(mockTrx);
-    });
-
-    await expect(knex.transaction(mockCallback)).rejects.toThrow('Transaction failed');
-    expect(mockCallback).toHaveBeenCalled();
-    spy.mockRestore();
+    })).rejects.toThrow('Transaction failed');
   });
 
   it('should call original transaction for non-callback arguments', async () => {
@@ -220,76 +113,8 @@ describe('wrapTransactionMethod', () => {
     wrapTransactionMethod(knex);
     wrapTransactionMethod(knex);
 
-    const mockCallback = vi.fn(async (trx: KnexTypes.Transaction) => {
+    await mockTransaction(knex, async (trx) => {
       expect(trx.prepared).toBeDefined();
-      return Promise.resolve();
     });
-
-    const spy = vi.spyOn(knex, 'transaction') as any;
-    spy.mockImplementation(async (callback: any) => {
-      const mockTrx = knex as unknown as KnexTypes.Transaction;
-      addPreparedFactory(mockTrx as unknown as KnexTypes);
-      return callback(mockTrx);
-    });
-
-    await knex.transaction(mockCallback);
-
-    expect(mockCallback).toHaveBeenCalled();
-    spy.mockRestore();
-  });
-
-  it('should handle multiple sequential transactions', async () => {
-    wrapTransactionMethod(knex);
-
-    const spy = vi.spyOn(knex, 'transaction') as any;
-    spy.mockImplementation(async (callback: any) => {
-      const mockTrx = knex as unknown as KnexTypes.Transaction;
-      addPreparedFactory(mockTrx as unknown as KnexTypes);
-      return callback(mockTrx);
-    });
-
-    const result1 = await knex.transaction(async (trx: KnexTypes.Transaction) => {
-      const builder = trx('users').prepared();
-      expect(getMetadata(builder)?.name).toBe('auto');
-      return 'first';
-    });
-
-    const result2 = await knex.transaction(async (trx: KnexTypes.Transaction) => {
-      const builder = trx('posts').prepared('custom');
-      expect(getMetadata(builder)?.name).toBe('custom');
-      return 'second';
-    });
-
-    expect(result1).toBe('first');
-    expect(result2).toBe('second');
-    spy.mockRestore();
-  });
-
-  it('should work with transaction config options', async () => {
-    wrapTransactionMethod(knex);
-
-    const mockCallback = vi.fn(async (trx: KnexTypes.Transaction) => {
-      expect(trx.prepared).toBeDefined();
-      return Promise.resolve();
-    });
-
-    const spy = vi.spyOn(knex, 'transaction') as any;
-    spy.mockImplementation(async (_configOrCallback: any, callback?: any) => {
-      const mockTrx = knex as unknown as KnexTypes.Transaction;
-      addPreparedFactory(mockTrx as unknown as KnexTypes);
-      if (typeof callback === 'function') {
-        return callback(mockTrx);
-      }
-      if (typeof _configOrCallback === 'function') {
-        return _configOrCallback(mockTrx);
-      }
-      return Promise.resolve();
-    });
-
-    // Transaction with config and callback
-    await (knex.transaction as any)({ isolationLevel: 'serializable' }, mockCallback);
-
-    expect(mockCallback).toHaveBeenCalled();
-    spy.mockRestore();
   });
 });

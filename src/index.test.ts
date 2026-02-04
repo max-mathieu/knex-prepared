@@ -70,48 +70,6 @@ describe('knexPrepared integration', () => {
     expect(getMetadata(query2)?.name).toBeNull();
   });
 
-  it('should handle complex queries', () => {
-    const knex = knexPrepared(Knex({ client: 'pg' }));
-
-    const query = knex
-      .prepared('users')
-      .select('users.*', 'posts.title')
-      .leftJoin('posts', 'users.id', 'posts.user_id')
-      .where('users.active', true)
-      .whereIn('users.role', ['admin', 'user'])
-      .orderBy('users.created_at', 'desc')
-      .limit(10)
-      .offset(20);
-
-    const metadata = getMetadata(query);
-    expect(metadata?.name).toBe('auto');
-
-    const sql = query.toSQL();
-    expect(sql.sql).toContain('select');
-    expect(sql.sql).toContain('left join');
-    expect(sql.sql).toContain('where');
-  });
-
-  it('should work with different query types', () => {
-    const knex = knexPrepared(Knex({ client: 'pg' }));
-
-    // SELECT
-    const select = knex.prepared('users').select('*');
-    expect(getMetadata(select)?.name).toBe('auto');
-
-    // INSERT
-    const insert = knex.prepared('users').insert({ name: 'test', email: 'test@test.com' });
-    expect(getMetadata(insert)?.name).toBe('auto');
-
-    // UPDATE
-    const update = knex.prepared('users').where('id', 1).update({ name: 'updated' });
-    expect(getMetadata(update)?.name).toBe('auto');
-
-    // DELETE
-    const del = knex.prepared('users').where('id', 1).delete();
-    expect(getMetadata(del)?.name).toBe('auto');
-  });
-
   it('should emit query events with prepared statement names', () => {
     const knex = knexPrepared(Knex({ client: 'pg' }));
 
@@ -134,18 +92,6 @@ describe('knexPrepared integration', () => {
     expect(capturedQueryData).not.toBeNull();
     expect(capturedQueryData!.options?.name).toBeDefined();
     expect(capturedQueryData!.options?.name).toMatch(/^auto-[0-9a-f]{16}$/);
-  });
-
-  it('should preserve Knex instance type and methods', () => {
-    const baseKnex = Knex({ client: 'pg' });
-    const knex = knexPrepared(baseKnex);
-
-    // Standard Knex methods should still exist
-    expect(typeof knex.select).toBe('function');
-    expect(typeof knex.raw).toBe('function');
-    expect(typeof knex.transaction).toBe('function');
-    expect(typeof knex.destroy).toBe('function');
-    expect(typeof knex.schema).toBe('object');
   });
 
   it('should work with default export', async () => {

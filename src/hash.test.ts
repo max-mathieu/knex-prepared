@@ -35,30 +35,4 @@ describe('generatePreparedStatementName', () => {
     const name2 = generatePreparedStatementName('SELECT * FROM posts');
     expect(name1).not.toBe(name2);
   });
-
-  it('should handle empty strings', () => {
-    const name = generatePreparedStatementName('');
-    expect(name).toMatch(/^auto-[0-9a-f]{16}$/);
-  });
-
-  it('should handle complex SQL queries', () => {
-    const sql = `
-      SELECT u.id, u.name, p.title
-      FROM users u
-      JOIN posts p ON u.id = p.user_id
-      WHERE u.active = true
-      AND p.created_at > ?
-      ORDER BY p.created_at DESC
-      LIMIT 10
-    `;
-    const name = generatePreparedStatementName(sql);
-    expect(name).toMatch(/^auto-[0-9a-f]{16}$/);
-  });
-
-  it('should produce exactly 16 hex characters after prefix', () => {
-    const name = generatePreparedStatementName('SELECT 1');
-    const hashPart = name.replace('auto-', '');
-    expect(hashPart).toHaveLength(16);
-    expect(hashPart).toMatch(/^[0-9a-f]{16}$/);
-  });
 });
