@@ -101,6 +101,172 @@ describe.skipIf(shouldSkip)('Integration tests with PostgreSQL', () => {
     });
   });
 
+  describe('autoNameSelects option', () => {
+    it('should automatically prepare SELECT queries when enabled', async () => {
+      // Create knex instance with autoNameSelects enabled
+      const knexAutoName = createTestKnex({ autoNameSelects: true });
+
+      try {
+        await knexAutoName.transaction(async (trx) => {
+          // Execute a SELECT query WITHOUT calling .prepared()
+          const users = await trx('users').select('*').where('active', true).orderBy('id');
+
+          expect(users).toHaveLength(2);
+          expect(users[0].name).toBe('Alice');
+          expect(users[1].name).toBe('Bob');
+
+          // Verify that a prepared statement was automatically created
+          const statements = await trx.raw<{ rows: Array<{ name: string; statement: string }> }>(
+            'SELECT name, statement FROM pg_prepared_statements WHERE name LIKE ?',
+            ['auto-%']
+          );
+
+          expect(statements.rows.length).toBeGreaterThan(0);
+          // Verify the prepared statement contains our query
+          const ourStatement = statements.rows.find(s =>
+            s.statement.toLowerCase().includes('"users"') &&
+            s.statement.toLowerCase().includes('"active"')
+          );
+          expect(ourStatement).toBeDefined();
+          expect(ourStatement!.name).toMatch(/^auto-[0-9a-f]{16}$/);
+        });
+      } finally {
+        await knexAutoName.destroy();
+      }
+    });
+
+    it('should not auto-prepare non-SELECT queries even with autoNameSelects enabled', async () => {
+      // Create knex instance with autoNameSelects enabled
+      const knexAutoName = createTestKnex({ autoNameSelects: true });
+
+      try {
+        await knexAutoName.transaction(async (trx) => {
+          // Get prepared statements before the INSERT
+          const beforeStatements = await trx.raw<{ rows: Array<{ name: string; statement: string }> }>(
+            'SELECT name, statement FROM pg_prepared_statements'
+          );
+          const beforeCount = beforeStatements.rows.length;
+
+          // Execute an INSERT query WITHOUT calling .prepared()
+          const [newUser] = await trx('users')
+            .insert({
+              name: 'TestUser',
+              email: 'test-auto-name@example.com',
+              active: true,
+            })
+            .returning('*');
+
+          expect(newUser.name).toBe('TestUser');
+
+          // Verify no new prepared statement was created for INSERT
+          const afterStatements = await trx.raw<{ rows: Array<{ name: string; statement: string }> }>(
+            'SELECT name, statement FROM pg_prepared_statements'
+          );
+
+          // Should be the same count (no new prepared statement for INSERT)
+          expect(afterStatements.rows.length).toBe(beforeCount);
+
+          // Roll back the transaction to avoid affecting other tests
+          throw new Error('Rollback');
+        }).catch((err) => {
+          // Ignore the rollback error
+          if (err.message !== 'Rollback') {
+            throw err;
+          }
+        });
+      } finally {
+        await knexAutoName.destroy();
+      }
+    });
+
+    it('should respect explicit .prepared(false) even with autoNameSelects enabled', async () => {
+      // Create knex instance with autoNameSelects enabled
+      const knexAutoName = createTestKnex({ autoNameSelects: true });
+
+      try {
+        await knexAutoName.transaction(async (trx) => {
+          const preparedName = getRandomPreparedName('explicit-disabled');
+
+          // Execute SELECT with explicit .prepared(false)
+          const users = await trx('users')
+            .prepared(false)
+            .select('*')
+            .where('active', true)
+            .orderBy('id');
+
+          expect(users).toHaveLength(2);
+
+          // Verify no prepared statement was created with our name
+          const statements = await trx.raw<{ rows: Array<{ name: string; statement: string }> }>(
+            'SELECT name, statement FROM pg_prepared_statements WHERE name = ?',
+            [preparedName]
+          );
+
+          expect(statements.rows).toHaveLength(0);
+        });
+      } finally {
+        await knexAutoName.destroy();
+      }
+    });
+
+    it('should allow explicit prepared names to override autoNameSelects', async () => {
+      // Create knex instance with autoNameSelects enabled
+      const knexAutoName = createTestKnex({ autoNameSelects: true });
+
+      try {
+        await knexAutoName.transaction(async (trx) => {
+          const preparedName = getRandomPreparedName('custom-name');
+
+          // Execute SELECT with explicit custom name
+          const users = await trx('users')
+            .prepared(preparedName)
+            .select('*')
+            .where('active', true)
+            .orderBy('id');
+
+          expect(users).toHaveLength(2);
+
+          // Verify prepared statement was created with custom name (not auto-generated)
+          const statements = await trx.raw<{ rows: Array<{ name: string; statement: string }> }>(
+            'SELECT name, statement FROM pg_prepared_statements WHERE name = ?',
+            [preparedName]
+          );
+
+          expect(statements.rows).toHaveLength(1);
+          expect(statements.rows[0].name).toBe(preparedName);
+        });
+      } finally {
+        await knexAutoName.destroy();
+      }
+    });
+
+    it('should not auto-prepare when autoNameSelects is false (default)', async () => {
+      // Use default knex instance (autoNameSelects: false)
+      await knex.transaction(async (trx) => {
+        // Get initial prepared statement count
+        const beforeStatements = await trx.raw<{ rows: Array<{ name: string; statement: string }> }>(
+          'SELECT name FROM pg_prepared_statements WHERE name LIKE ?',
+          ['auto-%']
+        );
+        const beforeCount = beforeStatements.rows.length;
+
+        // Execute a SELECT query WITHOUT calling .prepared()
+        const users = await trx('users').select('*').where('active', true).orderBy('id');
+
+        expect(users).toHaveLength(2);
+
+        // Verify no new prepared statement was created
+        const afterStatements = await trx.raw<{ rows: Array<{ name: string; statement: string }> }>(
+          'SELECT name FROM pg_prepared_statements WHERE name LIKE ?',
+          ['auto-%']
+        );
+
+        // Count should be the same (no auto-preparation)
+        expect(afterStatements.rows.length).toBe(beforeCount);
+      });
+    });
+  });
+
   describe('Factory method: knex.prepared(table)', () => {
     it('should execute SELECT query with auto-generated prepared statement', async () => {
       await withPreparedStatementsCheck(async (trx, getPreparedStatements) => {
