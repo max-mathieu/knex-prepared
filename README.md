@@ -87,6 +87,28 @@ await knex('users').prepared('my-query').where('active', true).select('*');
 await knex('users').where('active', true).prepared().select('*');
 ```
 
+## Transactions
+
+Prepared statements work seamlessly with Knex transactions. Both the factory and chainable methods are supported:
+
+```typescript
+await knex.transaction(async (trx) => {
+  // Chainable method
+  await trx('users').prepared().where('id', 1).update({ balance: 100 });
+
+  // Factory method
+  await trx.prepared('audit_log').insert({
+    action: 'balance_update',
+    user_id: 1
+  });
+
+  // Custom names work too
+  await trx('users').prepared('update-balance').where('id', 2).update({ balance: 200 });
+});
+```
+
+**Note**: Each transaction uses the same database connection, which means prepared statements created within a transaction are available throughout that transaction and persist on the connection after the transaction completes.
+
 ## How It Works
 
 **Naming**: Auto-generated names use the format `auto-{first 16 chars of SHA-256 hash}`. Same SQL always produces the same name.

@@ -145,123 +145,94 @@ describe.skipIf(shouldSkip)('Integration tests with PostgreSQL', () => {
 
   describe('Prepared statement caching verification', () => {
     it('should create prepared statements in PostgreSQL', async () => {
-      // Use a raw connection to ensure all queries are on the same connection
-      await knex.raw('SELECT 1', [], {
-        connection: async (connection) => {
-          // Execute queries with prepared statements using the same connection
-          await knex('users')
-            .prepared()
-            .select('*')
-            .where('active', true)
-            .connection(connection);
-          await knex('users')
-            .prepared()
-            .select('*')
-            .where('active', true)
-            .connection(connection);
+      // Use a transaction to ensure all queries are on the same connection
+      await knex.transaction(async (trx) => {
+        // Execute queries with prepared statements using the same connection
+        await trx('users').prepared().select('*').where('active', true);
+        await trx('users').prepared().select('*').where('active', true);
 
-          // Query pg_prepared_statements on the same connection
-          const result = await knex
-            .raw<{ rows: Array<{ name: string; statement: string }> }>(
-              'SELECT name, statement FROM pg_prepared_statements WHERE name LIKE ?',
-              ['auto-%']
-            )
-            .connection(connection);
+        // Query pg_prepared_statements on the same connection
+        const result = await trx.raw<{ rows: Array<{ name: string; statement: string }> }>(
+          'SELECT name, statement FROM pg_prepared_statements WHERE name LIKE ?',
+          ['auto-%']
+        );
 
-          // Should have at least one prepared statement
-          expect(result.rows.length).toBeGreaterThan(0);
-          expect(result.rows[0].name).toMatch(/^auto-[0-9a-f]{16}$/);
-          expect(result.rows[0].statement).toContain('SELECT');
-        },
+        // Should have at least one prepared statement
+        expect(result.rows.length).toBeGreaterThan(0);
+        expect(result.rows[0].name).toMatch(/^auto-[0-9a-f]{16}$/);
+        expect(result.rows[0].statement).toContain('SELECT');
       });
     });
 
     it('should reuse the same prepared statement for identical queries', async () => {
-      await knex.raw('SELECT 1', [], {
-        connection: async (connection) => {
-          // Execute the same query multiple times
-          await knex('users')
-            .prepared()
-            .select('*')
-            .where('active', true)
-            .connection(connection);
-          await knex('users')
-            .prepared()
-            .select('*')
-            .where('active', true)
-            .connection(connection);
-          await knex('users')
-            .prepared()
-            .select('*')
-            .where('active', true)
-            .connection(connection);
+      await knex.transaction(async (trx) => {
+        // Execute the same query multiple times
+        await trx('users').prepared().select('*').where('active', true);
+        await trx('users').prepared().select('*').where('active', true);
+        await trx('users').prepared().select('*').where('active', true);
 
-          // Check that only ONE prepared statement was created for this SQL
-          const result = await knex
-            .raw<{ rows: Array<{ name: string }> }>(
-              "SELECT name FROM pg_prepared_statements WHERE statement LIKE '%active%'"
-            )
-            .connection(connection);
+        // Check that only ONE prepared statement was created for this SQL
+        const result = await trx.raw<{ rows: Array<{ name: string }> }>(
+          "SELECT name FROM pg_prepared_statements WHERE statement LIKE '%active%'"
+        );
 
-          // Should have exactly 1 prepared statement (reused 3 times)
-          expect(result.rows.length).toBe(1);
-          expect(result.rows[0].name).toMatch(/^auto-[0-9a-f]{16}$/);
-        },
+        // Should have exactly 1 prepared statement (reused 3 times)
+        expect(result.rows.length).toBe(1);
+        expect(result.rows[0].name).toMatch(/^auto-[0-9a-f]{16}$/);
       });
     });
 
     it('should create different prepared statements for different queries', async () => {
-      await knex.raw('SELECT 1', [], {
-        connection: async (connection) => {
-          // Execute queries with different SQL
-          await knex('users')
-            .prepared()
-            .select('*')
-            .where('active', true)
-            .connection(connection);
-          await knex('users').prepared().select('id', 'name').connection(connection);
-          await knex('posts')
-            .prepared()
-            .select('*')
-            .where('published', true)
-            .connection(connection);
+      await knex.transaction(async (trx) => {
+        // Execute queries with different SQL
+        await trx('users').prepared().select('*').where('active', true);
+        await trx('users').prepared().select('id', 'name');
+        await trx('posts').prepared().select('*').where('published', true);
 
-          // Query all auto-generated prepared statements
-          const result = await knex
-            .raw<{ rows: Array<{ name: string }> }>(
-              'SELECT name FROM pg_prepared_statements WHERE name LIKE ?',
-              ['auto-%']
-            )
-            .connection(connection);
+        // Query all auto-generated prepared statements
+        const result = await trx.raw<{ rows: Array<{ name: string }> }>(
+          'SELECT name FROM pg_prepared_statements WHERE name LIKE ?',
+          ['auto-%']
+        );
 
-          // Should have at least 3 different prepared statements
-          expect(result.rows.length).toBeGreaterThanOrEqual(3);
-        },
+        // Should have at least 3 different prepared statements
+        expect(result.rows.length).toBeGreaterThanOrEqual(3);
       });
     });
 
     it('should use custom prepared statement names', async () => {
-      await knex.raw('SELECT 1', [], {
-        connection: async (connection) => {
-          // Execute query with custom name
-          await knex('users')
-            .prepared('my-custom-query')
-            .select('*')
-            .where('id', userIds.user1Id)
-            .connection(connection);
+      await knex.transaction(async (trx) => {
+        // Execute query with custom name
+        await trx('users')
+          .prepared('my-custom-query')
+          .select('*')
+          .where('id', userIds.user1Id);
 
-          // Verify the custom name appears in pg_prepared_statements
-          const result = await knex
-            .raw<{ rows: Array<{ name: string; statement: string }> }>(
-              'SELECT name, statement FROM pg_prepared_statements WHERE name = ?',
-              ['my-custom-query']
-            )
-            .connection(connection);
+        // Verify the custom name appears in pg_prepared_statements
+        const result = await trx.raw<{ rows: Array<{ name: string; statement: string }> }>(
+          'SELECT name, statement FROM pg_prepared_statements WHERE name = ?',
+          ['my-custom-query']
+        );
 
-          expect(result.rows).toHaveLength(1);
-          expect(result.rows[0].name).toBe('my-custom-query');
-          expect(result.rows[0].statement).toContain('SELECT');
-        },
+        expect(result.rows).toHaveLength(1);
+        expect(result.rows[0].name).toBe('my-custom-query');
+        expect(result.rows[0].statement).toContain('SELECT');
+      });
+    });
+
+    it('should work with transactions using chainable method', async () => {
+      await knex.transaction(async (trx) => {
+        // Test chainable method in transaction
+        const users = await trx('users').prepared().select('*').where('active', true);
+        expect(users).toHaveLength(2);
+      });
+    });
+
+    it('should work with transactions using factory method', async () => {
+      await knex.transaction(async (trx) => {
+        // Test factory method in transaction
+        const users = await trx.prepared('users').select('*').where('active', true);
+        expect(users).toHaveLength(2);
       });
     });
   });

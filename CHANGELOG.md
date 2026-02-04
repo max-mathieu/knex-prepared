@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Transaction support: Both `trx('table').prepared()` and `trx.prepared('table')` now work within Knex transactions
+- Comprehensive test suite for transaction functionality (13 tests covering all transaction scenarios)
+
 ## [0.1.0] - 2026-02-03
 
 ### Added
@@ -13,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Two APIs for enabling prepared statements:
   - Factory method: `knex.prepared('tableName')`
   - Chainable method: `query.prepared(nameOrFlag)`
+- Transaction support: Works seamlessly with `knex.transaction()`
 - Auto-generated prepared statement names using SHA-256 hash
 - Custom prepared statement naming support
 - Ability to disable prepared statements per query

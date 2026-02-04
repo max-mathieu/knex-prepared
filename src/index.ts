@@ -2,6 +2,7 @@ import type { Knex } from 'knex';
 import { extendQueryBuilder } from './query-builder';
 import { attachPreparedStatementHook } from './interceptor';
 import { addPreparedFactory } from './factory';
+import { wrapTransactionMethod } from './transaction';
 
 /**
  * Extends a Knex instance with prepared statement support.
@@ -12,6 +13,7 @@ export function knexPrepared<TKnex extends Knex = Knex>(
 ): TKnex & { prepared: (tableName: string) => Knex.QueryBuilder } {
   extendQueryBuilder(knex);
   const extended = addPreparedFactory(knex);
+  wrapTransactionMethod(knex);
   attachPreparedStatementHook(knex);
   return extended as TKnex & { prepared: (tableName: string) => Knex.QueryBuilder };
 }
