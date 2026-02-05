@@ -133,13 +133,9 @@ const processQueryMetadata = (
   if (metadata.name !== null) {
     if (!options.disableWarnings && hasInClause(sql)) {
       // Warn about IN clauses, with specific method info if available
-      const methodsUsed = metadata.inClauseRewrites
-        ? Array.from(metadata.inClauseRewrites.keys()).join(', ')
-        : 'whereIn/whereNotIn';
-
       // eslint-disable-next-line no-console
       console.warn(
-        `[knex-prepared] Warning: Prepared statement with IN/NOT IN clause detected (used ${methodsUsed}). ` +
+        `[knex-prepared] Warning: Prepared statement with IN/NOT IN clause detected. ` +
           'Prepared statements with variable-length parameter lists can lead to poor plan caching. ' +
           'Consider enabling rewriteInClauses option or rewriting to = ANY($1) / <> ALL($1) manually.'
       );

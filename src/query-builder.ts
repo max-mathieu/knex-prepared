@@ -15,11 +15,6 @@ export interface PreparedMetadata {
    * Copied from options when .prepared() is called.
    */
   rewriteInClauses?: boolean;
-  /**
-   * Tracks IN clause rewrites for this query.
-   * Key is the column identifier, value is the rewrite type.
-   */
-  inClauseRewrites?: Map<string, InClauseRewriteType>;
 }
 
 /**
@@ -140,7 +135,9 @@ export const extendQueryBuilder = (knex: Knex): void => {
     function (this: QueryBuilderInstance, nameOrFlag?: string | boolean) {
       const name = determineNameValue(nameOrFlag);
       // Capture rewriteInClauses option from the query builder's client
-      const builderOptions = this.client?.[KNEX_PREPARED_OPTIONS_SYMBOL] as ResolvedKnexPreparedOptions | undefined;
+      const builderOptions = this.client?.[KNEX_PREPARED_OPTIONS_SYMBOL] as
+        | ResolvedKnexPreparedOptions
+        | undefined;
       const metadata: PreparedMetadata = {
         name,
         rewriteInClauses: builderOptions?.rewriteInClauses,
@@ -181,15 +178,6 @@ export const extendQueryBuilder = (knex: Knex): void => {
 
           return this[whereRawMethod](`?? ${operator}(?::${castType})`, [column, values]);
         }
-      }
-
-      // Track that IN clause was used (for warning messages)
-      if (metadata) {
-        if (!metadata.inClauseRewrites) {
-          metadata.inClauseRewrites = new Map();
-        }
-        metadata.inClauseRewrites.set(methodName, methodName as InClauseRewriteType);
-        setQueryBuilderMetadata(builder, metadata);
       }
 
       return originalMethod.apply(this, args);
