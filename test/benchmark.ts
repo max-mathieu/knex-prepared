@@ -53,7 +53,7 @@ async function runBenchmark(
   iterations: number,
   warmup: number
 ): Promise<BenchmarkStats> {
-    console.log(
+  console.log(
     `  Running ${name}, ${iterations.toLocaleString()} iterations + ${warmup} warmup)...`
   );
 
@@ -89,7 +89,6 @@ async function benchmark(
   iterations: number = ITERATIONS,
   warmup: number = WARMUP_ITERATIONS
 ): Promise<{ regular: BenchmarkStats; prepared: BenchmarkStats }> {
-
   const knex = getBenchmarkKnex();
   const regularFns = queryConfigs.map(
     (config) => async () => await config.build(knex(config.tableName))
@@ -151,7 +150,12 @@ async function benchmarkInClauses(
   const rewriteFns = queryConfigs.map(
     (config) => async () => await config.build(rewriteKnex.prepared(config.tableName))
   );
-  const rewrite = await runBenchmark(`${name} on knexPrepared w/ rewriteInClauses`, rewriteFns, iterations, warmup);
+  const rewrite = await runBenchmark(
+    `${name} on knexPrepared w/ rewriteInClauses`,
+    rewriteFns,
+    iterations,
+    warmup
+  );
   await rewriteKnex.destroy();
 
   console.log(
@@ -330,12 +334,18 @@ async function main() {
         { tableName: 'users', build: (q) => q.where('age', '>', 30).select('*') },
         { tableName: 'posts', build: (q) => q.where('published', false).select('*') },
         { tableName: 'users', build: (q) => q.where('active', true).select('id', 'name') },
-        { tableName: 'posts', build: (q) => q.where('user_id', '<', 50).select('title', 'content') },
+        {
+          tableName: 'posts',
+          build: (q) => q.where('user_id', '<', 50).select('title', 'content'),
+        },
         { tableName: 'users', build: (q) => q.where('name', 'like', 'User 1%').select('*') },
         { tableName: 'posts', build: (q) => q.where('title', 'like', 'Post 2%').select('*') },
         { tableName: 'users', build: (q) => q.where('age', '>=', 40).select('email', 'age') },
         { tableName: 'posts', build: (q) => q.where('id', '<=', 100).select('*') },
-        { tableName: 'users', build: (q) => q.where('email', 'like', '%@example.com').select('name') },
+        {
+          tableName: 'users',
+          build: (q) => q.where('email', 'like', '%@example.com').select('name'),
+        },
         { tableName: 'posts', build: (q) => q.whereNot('published', true).select('id', 'title') },
       ],
       ITERATIONS,
@@ -348,16 +358,50 @@ async function main() {
     const { regular: multiWhere, prepared: multiWherePrepared } = await benchmark(
       'Multiple WHERE',
       [
-        { tableName: 'users', build: (q) => q.where('active', true).where('age', '>', 30).select('*') },
-        { tableName: 'posts', build: (q) => q.where('published', true).where('user_id', '<', 50).select('*') },
-        { tableName: 'users', build: (q) => q.where('age', '>=', 25).where('name', 'like', 'User%').select('id') },
-        { tableName: 'posts', build: (q) => q.where('published', false).where('title', 'like', 'Post%').select('id', 'title') },
-        { tableName: 'users', build: (q) => q.where('active', true).where('email', 'like', '%@example.com').select('name') },
-        { tableName: 'posts', build: (q) => q.where('user_id', '>', 10).where('id', '<', 1000).select('*') },
-        { tableName: 'users', build: (q) => q.where('age', '<', 40).whereNot('active', false).select('*') },
-        { tableName: 'posts', build: (q) => q.where('published', true).whereNot('content', null).select('title', 'content') },
-        { tableName: 'users', build: (q) => q.where('id', '>', 100).where('age', '<=', 50).select('id', 'name', 'age') },
-        { tableName: 'posts', build: (q) => q.whereNot('user_id', 1).where('published', true).select('user_id', 'title') },
+        {
+          tableName: 'users',
+          build: (q) => q.where('active', true).where('age', '>', 30).select('*'),
+        },
+        {
+          tableName: 'posts',
+          build: (q) => q.where('published', true).where('user_id', '<', 50).select('*'),
+        },
+        {
+          tableName: 'users',
+          build: (q) => q.where('age', '>=', 25).where('name', 'like', 'User%').select('id'),
+        },
+        {
+          tableName: 'posts',
+          build: (q) =>
+            q.where('published', false).where('title', 'like', 'Post%').select('id', 'title'),
+        },
+        {
+          tableName: 'users',
+          build: (q) =>
+            q.where('active', true).where('email', 'like', '%@example.com').select('name'),
+        },
+        {
+          tableName: 'posts',
+          build: (q) => q.where('user_id', '>', 10).where('id', '<', 1000).select('*'),
+        },
+        {
+          tableName: 'users',
+          build: (q) => q.where('age', '<', 40).whereNot('active', false).select('*'),
+        },
+        {
+          tableName: 'posts',
+          build: (q) =>
+            q.where('published', true).whereNot('content', null).select('title', 'content'),
+        },
+        {
+          tableName: 'users',
+          build: (q) => q.where('id', '>', 100).where('age', '<=', 50).select('id', 'name', 'age'),
+        },
+        {
+          tableName: 'posts',
+          build: (q) =>
+            q.whereNot('user_id', 1).where('published', true).select('user_id', 'title'),
+        },
       ],
       ITERATIONS,
       WARMUP_ITERATIONS
@@ -371,16 +415,86 @@ async function main() {
     const { regular: join, prepared: joinPrepared } = await benchmark(
       'Simple JOIN',
       [
-        { tableName: 'users', build: (q) => q.join('posts', 'users.id', 'posts.user_id').where('users.id', 10).select('users.name', 'posts.title') },
-        { tableName: 'posts', build: (q) => q.join('users', 'posts.user_id', 'users.id').where('posts.published', true).select('posts.title', 'users.email') },
-        { tableName: 'users', build: (q) => q.leftJoin('posts', 'users.id', 'posts.user_id').where('users.active', true).select('users.id', 'posts.id as post_id') },
-        { tableName: 'posts', build: (q) => q.innerJoin('users', 'posts.user_id', 'users.id').where('users.age', '>', 30).select('posts.content', 'users.name') },
-        { tableName: 'users', build: (q) => q.join('posts', 'users.id', 'posts.user_id').where('posts.id', '<', 100).select('users.email', 'posts.title', 'posts.id') },
-        { tableName: 'posts', build: (q) => q.leftJoin('users', 'posts.user_id', 'users.id').where('posts.user_id', '>', 5).select('users.name', 'users.active', 'posts.published') },
-        { tableName: 'users', build: (q) => q.join('posts', 'users.id', 'posts.user_id').where('users.name', 'like', 'User%').select('users.id', 'users.name') },
-        { tableName: 'posts', build: (q) => q.join('users', 'posts.user_id', 'users.id').where('posts.title', 'like', 'Post%').select('posts.id', 'users.id as user_id') },
-        { tableName: 'users', build: (q) => q.leftJoin('posts', 'users.id', 'posts.user_id').where('users.id', '<=', 50).select('users.name', 'users.age', 'posts.title') },
-        { tableName: 'posts', build: (q) => q.innerJoin('users', 'posts.user_id', 'users.id').whereNot('posts.published', false).select('posts.title', 'posts.content', 'users.email') },
+        {
+          tableName: 'users',
+          build: (q) =>
+            q
+              .join('posts', 'users.id', 'posts.user_id')
+              .where('users.id', 10)
+              .select('users.name', 'posts.title'),
+        },
+        {
+          tableName: 'posts',
+          build: (q) =>
+            q
+              .join('users', 'posts.user_id', 'users.id')
+              .where('posts.published', true)
+              .select('posts.title', 'users.email'),
+        },
+        {
+          tableName: 'users',
+          build: (q) =>
+            q
+              .leftJoin('posts', 'users.id', 'posts.user_id')
+              .where('users.active', true)
+              .select('users.id', 'posts.id as post_id'),
+        },
+        {
+          tableName: 'posts',
+          build: (q) =>
+            q
+              .innerJoin('users', 'posts.user_id', 'users.id')
+              .where('users.age', '>', 30)
+              .select('posts.content', 'users.name'),
+        },
+        {
+          tableName: 'users',
+          build: (q) =>
+            q
+              .join('posts', 'users.id', 'posts.user_id')
+              .where('posts.id', '<', 100)
+              .select('users.email', 'posts.title', 'posts.id'),
+        },
+        {
+          tableName: 'posts',
+          build: (q) =>
+            q
+              .leftJoin('users', 'posts.user_id', 'users.id')
+              .where('posts.user_id', '>', 5)
+              .select('users.name', 'users.active', 'posts.published'),
+        },
+        {
+          tableName: 'users',
+          build: (q) =>
+            q
+              .join('posts', 'users.id', 'posts.user_id')
+              .where('users.name', 'like', 'User%')
+              .select('users.id', 'users.name'),
+        },
+        {
+          tableName: 'posts',
+          build: (q) =>
+            q
+              .join('users', 'posts.user_id', 'users.id')
+              .where('posts.title', 'like', 'Post%')
+              .select('posts.id', 'users.id as user_id'),
+        },
+        {
+          tableName: 'users',
+          build: (q) =>
+            q
+              .leftJoin('posts', 'users.id', 'posts.user_id')
+              .where('users.id', '<=', 50)
+              .select('users.name', 'users.age', 'posts.title'),
+        },
+        {
+          tableName: 'posts',
+          build: (q) =>
+            q
+              .innerJoin('users', 'posts.user_id', 'users.id')
+              .whereNot('posts.published', false)
+              .select('posts.title', 'posts.content', 'users.email'),
+        },
       ],
       ITERATIONS,
       WARMUP_ITERATIONS
@@ -394,16 +508,116 @@ async function main() {
     const { regular: complexJoin, prepared: complexJoinPrepared } = await benchmark(
       'Complex JOIN',
       [
-        { tableName: 'users', build: (q) => q.join('posts', 'users.id', 'posts.user_id').where('users.active', true).where('posts.published', true).orderBy('posts.created_at', 'desc').limit(10).select('users.name', 'posts.title', 'posts.created_at') },
-        { tableName: 'posts', build: (q) => q.leftJoin('users', 'posts.user_id', 'users.id').where('users.age', '>', 25).where('posts.id', '<', 500).orderBy('users.name', 'asc').limit(15).select('posts.title', 'users.email', 'users.age') },
-        { tableName: 'users', build: (q) => q.innerJoin('posts', 'users.id', 'posts.user_id').whereNot('users.active', false).where('posts.published', false).orderBy('posts.id', 'asc').limit(20).select('users.id', 'users.name', 'posts.content') },
-        { tableName: 'posts', build: (q) => q.join('users', 'posts.user_id', 'users.id').where('users.name', 'like', 'User%').where('posts.user_id', '>', 10).orderBy('posts.title', 'desc').limit(5).select('posts.id', 'posts.title', 'users.active') },
-        { tableName: 'users', build: (q) => q.leftJoin('posts', 'users.id', 'posts.user_id').where('users.id', '<=', 100).whereNot('posts.published', true).orderBy('users.created_at', 'desc').limit(8).select('users.email', 'posts.title', 'posts.published') },
-        { tableName: 'posts', build: (q) => q.innerJoin('users', 'posts.user_id', 'users.id').where('posts.title', 'like', 'Post%').where('users.active', true).orderBy('users.age', 'asc').limit(12).select('posts.content', 'users.name', 'users.email') },
-        { tableName: 'users', build: (q) => q.join('posts', 'users.id', 'posts.user_id').where('users.age', '>=', 30).where('posts.id', '>', 100).orderBy('posts.updated_at', 'desc').limit(25).select('users.id', 'posts.id as post_id', 'posts.updated_at') },
-        { tableName: 'posts', build: (q) => q.leftJoin('users', 'posts.user_id', 'users.id').where('posts.published', true).where('users.email', 'like', '%@example.com').orderBy('posts.created_at', 'asc').limit(7).select('posts.title', 'posts.created_at', 'users.name') },
-        { tableName: 'users', build: (q) => q.innerJoin('posts', 'users.id', 'posts.user_id').where('users.active', false).where('posts.content', 'like', 'Content%').orderBy('users.id', 'desc').limit(18).select('users.name', 'users.active', 'posts.title') },
-        { tableName: 'posts', build: (q) => q.join('users', 'posts.user_id', 'users.id').whereNot('users.age', null).where('posts.user_id', '<', 50).orderBy('users.email', 'asc').limit(30).select('posts.id', 'users.age', 'users.email', 'posts.published') },
+        {
+          tableName: 'users',
+          build: (q) =>
+            q
+              .join('posts', 'users.id', 'posts.user_id')
+              .where('users.active', true)
+              .where('posts.published', true)
+              .orderBy('posts.created_at', 'desc')
+              .limit(10)
+              .select('users.name', 'posts.title', 'posts.created_at'),
+        },
+        {
+          tableName: 'posts',
+          build: (q) =>
+            q
+              .leftJoin('users', 'posts.user_id', 'users.id')
+              .where('users.age', '>', 25)
+              .where('posts.id', '<', 500)
+              .orderBy('users.name', 'asc')
+              .limit(15)
+              .select('posts.title', 'users.email', 'users.age'),
+        },
+        {
+          tableName: 'users',
+          build: (q) =>
+            q
+              .innerJoin('posts', 'users.id', 'posts.user_id')
+              .whereNot('users.active', false)
+              .where('posts.published', false)
+              .orderBy('posts.id', 'asc')
+              .limit(20)
+              .select('users.id', 'users.name', 'posts.content'),
+        },
+        {
+          tableName: 'posts',
+          build: (q) =>
+            q
+              .join('users', 'posts.user_id', 'users.id')
+              .where('users.name', 'like', 'User%')
+              .where('posts.user_id', '>', 10)
+              .orderBy('posts.title', 'desc')
+              .limit(5)
+              .select('posts.id', 'posts.title', 'users.active'),
+        },
+        {
+          tableName: 'users',
+          build: (q) =>
+            q
+              .leftJoin('posts', 'users.id', 'posts.user_id')
+              .where('users.id', '<=', 100)
+              .whereNot('posts.published', true)
+              .orderBy('users.created_at', 'desc')
+              .limit(8)
+              .select('users.email', 'posts.title', 'posts.published'),
+        },
+        {
+          tableName: 'posts',
+          build: (q) =>
+            q
+              .innerJoin('users', 'posts.user_id', 'users.id')
+              .where('posts.title', 'like', 'Post%')
+              .where('users.active', true)
+              .orderBy('users.age', 'asc')
+              .limit(12)
+              .select('posts.content', 'users.name', 'users.email'),
+        },
+        {
+          tableName: 'users',
+          build: (q) =>
+            q
+              .join('posts', 'users.id', 'posts.user_id')
+              .where('users.age', '>=', 30)
+              .where('posts.id', '>', 100)
+              .orderBy('posts.updated_at', 'desc')
+              .limit(25)
+              .select('users.id', 'posts.id as post_id', 'posts.updated_at'),
+        },
+        {
+          tableName: 'posts',
+          build: (q) =>
+            q
+              .leftJoin('users', 'posts.user_id', 'users.id')
+              .where('posts.published', true)
+              .where('users.email', 'like', '%@example.com')
+              .orderBy('posts.created_at', 'asc')
+              .limit(7)
+              .select('posts.title', 'posts.created_at', 'users.name'),
+        },
+        {
+          tableName: 'users',
+          build: (q) =>
+            q
+              .innerJoin('posts', 'users.id', 'posts.user_id')
+              .where('users.active', false)
+              .where('posts.content', 'like', 'Content%')
+              .orderBy('users.id', 'desc')
+              .limit(18)
+              .select('users.name', 'users.active', 'posts.title'),
+        },
+        {
+          tableName: 'posts',
+          build: (q) =>
+            q
+              .join('users', 'posts.user_id', 'users.id')
+              .whereNot('users.age', null)
+              .where('posts.user_id', '<', 50)
+              .orderBy('users.email', 'asc')
+              .limit(30)
+              .select('posts.id', 'users.age', 'users.email', 'posts.published'),
+        },
       ],
       ITERATIONS,
       WARMUP_ITERATIONS
@@ -417,31 +631,97 @@ async function main() {
     const { regular: groupBy, prepared: groupByPrepared } = await benchmark(
       'Aggregation',
       [
-        { tableName: 'posts', build: (q) => q.select('user_id').count('* as post_count').groupBy('user_id') },
-        { tableName: 'posts', build: (q) => q.select('published').count('* as count').groupBy('published').orderBy('count', 'desc') },
-        { tableName: 'users', build: (q) => {
-          const knex = q.client;
-          return q.select('active').avg('age as avg_age').groupBy('active').having(knex.raw('avg(age) > ?', [25]));
-        }},
-        { tableName: 'posts', build: (q) => {
-          const knex = q.client;
-          return q.select('user_id').where('published', true).count('id as total').groupBy('user_id').having(knex.raw('count(id) > ?', [5]));
-        }},
-        { tableName: 'users', build: (q) => q.select('age').count('* as user_count').groupBy('age').orderBy('age', 'asc') },
-        { tableName: 'posts', build: (q) => {
-          const knex = q.client;
-          return q.select('published', 'user_id').count('* as cnt').groupBy('published', 'user_id').having(knex.raw('count(*) > ?', [3]));
-        }},
-        { tableName: 'users', build: (q) => q.select('active').where('age', '>', 20).count('id as total_users').groupBy('active').orderBy('total_users', 'desc') },
-        { tableName: 'posts', build: (q) => {
-          const knex = q.client;
-          return q.select('user_id').where('id', '<', 1000).sum('id as sum_ids').groupBy('user_id').having(knex.raw('sum(id) > ?', [100]));
-        }},
-        { tableName: 'users', build: (q) => q.select('active', 'age').count('* as count').groupBy('active', 'age').orderBy('count', 'asc') },
-        { tableName: 'posts', build: (q) => {
-          const knex = q.client;
-          return q.select('published').where('user_id', '<', 50).avg('user_id as avg_user_id').groupBy('published').having(knex.raw('avg(user_id) > ?', [10]));
-        }},
+        {
+          tableName: 'posts',
+          build: (q) => q.select('user_id').count('* as post_count').groupBy('user_id'),
+        },
+        {
+          tableName: 'posts',
+          build: (q) =>
+            q.select('published').count('* as count').groupBy('published').orderBy('count', 'desc'),
+        },
+        {
+          tableName: 'users',
+          build: (q) => {
+            const knex = q.client;
+            return q
+              .select('active')
+              .avg('age as avg_age')
+              .groupBy('active')
+              .having(knex.raw('avg(age) > ?', [25]));
+          },
+        },
+        {
+          tableName: 'posts',
+          build: (q) => {
+            const knex = q.client;
+            return q
+              .select('user_id')
+              .where('published', true)
+              .count('id as total')
+              .groupBy('user_id')
+              .having(knex.raw('count(id) > ?', [5]));
+          },
+        },
+        {
+          tableName: 'users',
+          build: (q) =>
+            q.select('age').count('* as user_count').groupBy('age').orderBy('age', 'asc'),
+        },
+        {
+          tableName: 'posts',
+          build: (q) => {
+            const knex = q.client;
+            return q
+              .select('published', 'user_id')
+              .count('* as cnt')
+              .groupBy('published', 'user_id')
+              .having(knex.raw('count(*) > ?', [3]));
+          },
+        },
+        {
+          tableName: 'users',
+          build: (q) =>
+            q
+              .select('active')
+              .where('age', '>', 20)
+              .count('id as total_users')
+              .groupBy('active')
+              .orderBy('total_users', 'desc'),
+        },
+        {
+          tableName: 'posts',
+          build: (q) => {
+            const knex = q.client;
+            return q
+              .select('user_id')
+              .where('id', '<', 1000)
+              .sum('id as sum_ids')
+              .groupBy('user_id')
+              .having(knex.raw('sum(id) > ?', [100]));
+          },
+        },
+        {
+          tableName: 'users',
+          build: (q) =>
+            q
+              .select('active', 'age')
+              .count('* as count')
+              .groupBy('active', 'age')
+              .orderBy('count', 'asc'),
+        },
+        {
+          tableName: 'posts',
+          build: (q) => {
+            const knex = q.client;
+            return q
+              .select('published')
+              .where('user_id', '<', 50)
+              .avg('user_id as avg_user_id')
+              .groupBy('published')
+              .having(knex.raw('avg(user_id) > ?', [10]));
+          },
+        },
       ],
       ITERATIONS,
       WARMUP_ITERATIONS
@@ -508,8 +788,9 @@ async function main() {
       WARMUP_ITERATIONS
     );
     markdown.push(`### whereNotIn (sizes 1-${IN_CLAUSE_QUERY_VARIANTS})\n`);
-    markdown.push(formatInClauseTable(whereNotInRegular, whereNotInPrepared, whereNotInRewrite) + '\n');
-
+    markdown.push(
+      formatInClauseTable(whereNotInRegular, whereNotInPrepared, whereNotInRewrite) + '\n'
+    );
 
     markdown.push('---\n');
     markdown.push('*Benchmark run with knex-prepared on PostgreSQL*');

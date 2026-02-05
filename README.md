@@ -52,13 +52,34 @@ await knex('users').prepared(false).select('*');
 
 ## API
 
-### `knexPrepared(knex)`
+### `knexPrepared(knex, options?)`
 
 Extends a Knex instance with prepared statement support.
 
 ```typescript
 const knex = knexPrepared(Knex({ client: 'pg', connection: { /* ... */ } }));
+
+// With options
+const knex = knexPrepared(Knex({ client: 'pg', connection: { /* ... */ } }), {
+  autoNamePrefix: 'myapp',
+  autoNameHashLength: 12,
+  autoNameAllSelects: false,
+  rewriteInClauses: false,
+  disableWarnings: false,
+  autoNameCacheSize: 1000,
+});
 ```
+
+#### Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `autoNamePrefix` | `string` | `'auto'` | Prefix for auto-generated prepared statement names |
+| `autoNameHashLength` | `number` | `16` | Length of hash suffix in auto-generated names (1-64) |
+| `autoNameAllSelects` | `boolean` | `false` | Automatically name all SELECT queries without calling `.prepared()` |
+| `rewriteInClauses` | `boolean` | `false` | Rewrite IN clauses to `= ANY()` for better PostgreSQL performance |
+| `disableWarnings` | `boolean` | `true` in production | Disable warnings about prepared queries with IN clauses |
+| `autoNameCacheSize` | `number` | `1000` | LRU cache size for hash generation; set to 0 to disable |
 
 ### `knex.prepared(tableName)`
 

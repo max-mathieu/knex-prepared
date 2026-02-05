@@ -171,7 +171,6 @@ export const attachPreparedStatementHook = (knex: Knex): void => {
     return originalQuery(connection, obj);
   };
 
-
   // Listen to 'query' event to store prepared statement names for transaction queries (which bypass client.query)
   knex.on('query', (queryData: QueryEventData) => {
     if (typeof queryData.sql !== 'string') {

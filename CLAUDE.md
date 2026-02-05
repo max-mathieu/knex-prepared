@@ -18,38 +18,65 @@ This document provides comprehensive context about the knex-prepared library for
 - **Auto-naming**: Hash-based deterministic names (`auto-{hash16}`)
 - **Custom naming**: `knex('users').prepared('my-query-name')`
 - **Opt-out**: `knex('users').prepared(false)` to disable
+- **Configuration options**: Control auto-naming, caching, and warnings
 - **Zero dependencies**: Only peer dependencies on Knex and pg driver
+
+### Configuration Options
+
+The library accepts optional configuration via `knexPrepared(knex, options)`:
+
+- **autoNamePrefix** (default: `'auto'`) - Prefix for auto-generated prepared statement names
+- **autoNameHashLength** (default: `16`) - Length of hash suffix in auto-generated names (1-64)
+- **autoNameAllSelects** (default: `false`) - Automatically name all SELECT queries without calling `.prepared()`
+- **rewriteInClauses** (default: `false`) - Rewrite IN clauses to `= ANY()` for better PostgreSQL performance
+- **disableWarnings** (default: `true` in production) - Disable warnings about prepared queries with IN clauses
+- **autoNameCacheSize** (default: `1000`) - LRU cache size for hash generation; set to 0 to disable
+
+Options are stored on both the Knex instance and client using symbols to support multiple instances with different configurations.
 
 ## Architecture
 
 ### Core Components
 
-1. **hash.ts** - SHA-256 based prepared statement name generation
-   - Normalizes SQL (trim, collapse whitespace)
-   - Generates format: `auto-{first16chars of hash}`
-   - Deterministic: same SQL → same name
-
-2. **query-builder.ts** - QueryBuilder extension via `.extend()` method
+1. **query-builder.ts** - QueryBuilder extension via `.extend()` method
    - Defines `PREPARED_SYMBOL` (Symbol) for metadata storage
    - Implements `.prepared(nameOrFlag?)` chainable method
    - Contains TypeScript module augmentation for Knex types
    - Made idempotent to prevent duplicate extension errors
 
-3. **interceptor.ts** - Query event interception
+2. **interceptor.ts** - Query event interception and name generation
    - Hooks into `knex.on('query', ...)` event
    - Extracts metadata from builder using `PREPARED_SYMBOL`
+   - SHA-256 based prepared statement name generation with LRU caching
+   - Normalizes SQL (trim, collapse whitespace) before hashing
+   - Generates format: `{prefix}-{first N chars of hash}` (configurable)
    - Injects `name` property into query config for pg driver
    - pg driver automatically handles prepared statement caching
 
-4. **factory.ts** - Knex factory extension
+3. **factory.ts** - Knex factory extension
    - Adds `knex.prepared(tableName)` factory method
    - Wraps Knex instance with additional functionality
    - Returns QueryBuilder with metadata pre-set
 
-5. **index.ts** - Main entry point
-   - Exports `knexPrepared(knex)` function
+4. **index.ts** - Main entry point
+   - Exports `knexPrepared(knex, options?)` function
+   - Resolves configuration options with defaults
+   - Stores options on knex instance and client using symbols
    - Ties together all modules
    - Re-exports types
+
+5. **types.ts** - Configuration and type definitions
+   - Defines `KnexPreparedOptions` and `ResolvedKnexPreparedOptions`
+   - Helper functions for getting/setting options
+   - Type guards for options presence
+
+6. **symbols.ts** - Symbol definitions
+   - `PREPARED_SYMBOL` - Metadata storage on QueryBuilder
+   - `KNEX_PREPARED_OPTIONS_SYMBOL` - Options storage on Knex instance/client
+
+7. **transaction.ts** - Transaction support
+   - Wraps `knex.transaction()` to propagate prepared statement support
+   - Ensures both factory and chainable APIs work in transactions
 
 ### Data Flow
 
@@ -99,7 +126,18 @@ QueryBuilderConstructor.extend('prepared', ...);
 **Why**: Deterministic names enable PostgreSQL plan caching across connections.
 - Same SQL → same hash → same prepared statement name → reuse cached plan
 
-#### 5. Module Augmentation Type Constraints
+#### 5. Options Storage on Client
+**Why**: Multiple knex instances can have different configurations.
+```typescript
+// Store on both instance and client
+setOptions(knex, options);
+knexWithClient.client[KNEX_PREPARED_OPTIONS_SYMBOL] = options;
+```
+
+#### 6. LRU Cache for Auto-naming
+**Why**: Avoid re-hashing the same SQL repeatedly. Configurable via `autoNameCacheSize`.
+
+#### 7. Module Augmentation Type Constraints
 **Why**: Must match Knex's default generic parameters to avoid TypeScript errors.
 ```typescript
 // Must use 'any' as defaults to match Knex
@@ -163,11 +201,11 @@ export function knexPrepared<
 ### Test Organization
 
 **Unit Tests** (colocated in `src/`):
-- `hash.test.ts` - Hash generation logic
 - `query-builder.test.ts` - QueryBuilder extension
 - `factory.test.ts` - Factory method functionality
-- `interceptor.test.ts` - Query event interception
-- `index.test.ts` - Main entry point integration
+- `interceptor.test.ts` - Query event interception and hash generation
+- `transaction.test.ts` - Transaction support
+- `index.test.ts` - Main entry point integration and options resolution
 - `test-utils.ts` - Shared testing utilities
 
 **Integration Tests** (`test/`):
@@ -277,24 +315,6 @@ Types: `feat`, `fix`, `test`, `docs`, `build`, `ci`, `refactor`
 
 ## Git Workflow
 
-### Branch Strategy
-
-Stacked branches for each phase:
-```
-main
- └─ 01-project-setup
-     └─ 02-core-implementation
-         └─ 03-integration-tests
-             └─ 04-documentation
-                 └─ 05-publish-prep
-                     └─ 06-remove-any-types
-                         └─ 07-reorganize-tests
-                             └─ 08-add-benchmark
-                                 └─ 09-add-env-support (current)
-```
-
-Each branch builds on the previous phase's work.
-
 ### Branch Naming
 - Descriptive, kebab-case
 - Prefixed with sequence number for ordered implementation
@@ -336,6 +356,10 @@ interface QueryInterface<TRecord = any, TResult = any[]> {
 **Problem**: Need to access Knex internals without using 'any' everywhere.
 **Solution**: Create helper interfaces and test utilities with proper type guards.
 
+### Challenge 6: Multiple Knex Instances
+**Problem**: Different knex instances may need different configurations.
+**Solution**: Store options on both knex instance and client using symbols.
+
 ## Performance Characteristics
 
 ### Benchmark Results
@@ -359,11 +383,13 @@ Typical performance improvements (1000 iterations):
 ## Important Files Reference
 
 ### Source Files
-- `src/index.ts` - Main entry point, exports `knexPrepared()`
-- `src/hash.ts` - Name generation from SQL hash
-- `src/query-builder.ts` - `.prepared()` chainable method, Symbol definition
+- `src/index.ts` - Main entry point, exports `knexPrepared()`, options resolution
+- `src/query-builder.ts` - `.prepared()` chainable method, metadata storage
 - `src/factory.ts` - `knex.prepared('table')` factory method
-- `src/interceptor.ts` - Query event hook for name injection
+- `src/interceptor.ts` - Query event hook, name generation from SQL hash with LRU caching
+- `src/transaction.ts` - Transaction wrapper for prepared statement support
+- `src/types.ts` - Configuration options and type definitions
+- `src/symbols.ts` - Symbol definitions for metadata and options storage
 - `src/test-utils.ts` - Type-safe test helpers
 
 ### Configuration Files
