@@ -43,12 +43,18 @@ interface QueryBuilderInstance {
   [key: string]: unknown;
   queryContext: (context?: unknown) => unknown;
   _knexPreparedMetadata?: PreparedMetadata;
+  client: KnexClient;
   whereIn: (...args: unknown[]) => unknown;
   whereNotIn: (...args: unknown[]) => unknown;
   orWhereIn: (...args: unknown[]) => unknown;
   orWhereNotIn: (...args: unknown[]) => unknown;
   whereRaw: (...args: unknown[]) => unknown;
   orWhereRaw: (...args: unknown[]) => unknown;
+}
+
+interface KnexClient {
+  [KNEX_PREPARED_OPTIONS_SYMBOL]: ResolvedKnexPreparedOptions;
+  [key: string]: unknown;
 }
 
 /**
@@ -107,12 +113,18 @@ const inferPostgresArrayType = (value: unknown): string => {
 
 /**
  * Extends Knex QueryBuilder with the .prepared() chainable method.
- * Also wraps whereIn/whereNotIn methods to track usage.
+ * Also wraps whereIn/whereNotIn methods to replace with ANY if enabled in options.
  * Idempotent - safe to call multiple times.
  */
 export const extendQueryBuilder = (knex: Knex): void => {
   const dummyQuery = knex.queryBuilder();
   const QueryBuilderConstructor = dummyQuery.constructor as unknown as QueryBuilderConstructor;
+
+  const options = (knex as KnexWithOptions)[KNEX_PREPARED_OPTIONS_SYMBOL];
+
+  // Store options on the client so query builders can access them at runtime
+  const knexClient = (knex as unknown as { client: KnexClient }).client;
+  knexClient[KNEX_PREPARED_OPTIONS_SYMBOL] = options;
 
   if (QueryBuilderConstructor.prototype.prepared) {
     return;
@@ -131,16 +143,19 @@ export const extendQueryBuilder = (knex: Knex): void => {
   // Wrap whereIn/whereNotIn methods to track usage and optionally rewrite
   const methodsToWrap = ['whereIn', 'whereNotIn', 'orWhereIn', 'orWhereNotIn'] as const;
 
-  const options = (knex as KnexWithOptions)[KNEX_PREPARED_OPTIONS_SYMBOL];
-
   for (const methodName of methodsToWrap) {
     const originalMethod = QueryBuilderConstructor.prototype[methodName];
     QueryBuilderConstructor.prototype[methodName] = function (...args: unknown[]) {
+      const builder = this as QueryBuilderInstance;
+
+      // Get options from the client at runtime (not from closure)
+      const runtimeOptions = builder.client?.[KNEX_PREPARED_OPTIONS_SYMBOL] as ResolvedKnexPreparedOptions | undefined;
+
       // Get current metadata
-      const metadata = getQueryBuilderMetadata(this as QueryBuilderInstance);
+      const metadata = getQueryBuilderMetadata(builder);
 
       // If rewriteInClauses is enabled, rewrite to = ANY() / <> ALL()
-      if (options?.rewriteInClauses && args.length >= 2) {
+      if (runtimeOptions?.rewriteInClauses && args.length >= 2) {
         const [column, values] = args;
 
         // Only rewrite if we have an array of values
@@ -167,7 +182,7 @@ export const extendQueryBuilder = (knex: Knex): void => {
           metadata.inClauseRewrites = new Map();
         }
         metadata.inClauseRewrites.set(methodName, methodName as InClauseRewriteType);
-        setQueryBuilderMetadata(this as QueryBuilderInstance, metadata);
+        setQueryBuilderMetadata(builder, metadata);
       }
 
       return originalMethod.apply(this, args);

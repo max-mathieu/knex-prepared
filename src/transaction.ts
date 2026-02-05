@@ -1,11 +1,21 @@
 import type { Knex } from 'knex';
 import { addPreparedFactory } from './factory';
+import type { KnexWithOptions } from './types';
+import { KNEX_PREPARED_OPTIONS_SYMBOL } from './symbols';
+
+interface KnexClient {
+  [key: symbol]: unknown;
+  [key: string]: unknown;
+}
 
 /**
  * Wraps Knex transaction method to add prepared factory to transaction instances.
  */
 export const wrapTransactionMethod = (knex: Knex): void => {
   const originalTransaction = knex.transaction.bind(knex);
+
+  // Get the options from the parent knex instance
+  const parentOptions = (knex as KnexWithOptions)[KNEX_PREPARED_OPTIONS_SYMBOL];
 
   // Override transaction method using Object.defineProperty since it's read-only
   Object.defineProperty(knex, 'transaction', {
@@ -26,6 +36,13 @@ export const wrapTransactionMethod = (knex: Knex): void => {
       const wrappedCallback = async (trx: Knex.Transaction): Promise<unknown> => {
         // Add prepared factory to transaction instance
         addPreparedFactory(trx as unknown as Knex);
+
+        // Copy options to the transaction's client so query builders can access them
+        const trxClient = (trx as unknown as { client: KnexClient }).client;
+        if (trxClient && parentOptions) {
+          trxClient[KNEX_PREPARED_OPTIONS_SYMBOL] = parentOptions;
+        }
+
         return originalCallback(trx);
       };
 
