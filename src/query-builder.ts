@@ -11,6 +11,11 @@ import { Knex } from 'knex';
 export interface PreparedMetadata {
   name: 'auto' | string | null;
   /**
+   * Whether to rewrite IN clauses to ANY/ALL for this query.
+   * Copied from options when .prepared() is called.
+   */
+  rewriteInClauses?: boolean;
+  /**
    * Tracks IN clause rewrites for this query.
    * Key is the column identifier, value is the rewrite type.
    */
@@ -134,7 +139,12 @@ export const extendQueryBuilder = (knex: Knex): void => {
     'prepared',
     function (this: QueryBuilderInstance, nameOrFlag?: string | boolean) {
       const name = determineNameValue(nameOrFlag);
-      const metadata: PreparedMetadata = { name };
+      // Capture rewriteInClauses option from the query builder's client
+      const builderOptions = this.client?.[KNEX_PREPARED_OPTIONS_SYMBOL] as ResolvedKnexPreparedOptions | undefined;
+      const metadata: PreparedMetadata = {
+        name,
+        rewriteInClauses: builderOptions?.rewriteInClauses,
+      };
       setQueryBuilderMetadata(this, metadata);
       return this;
     }
@@ -148,14 +158,11 @@ export const extendQueryBuilder = (knex: Knex): void => {
     QueryBuilderConstructor.prototype[methodName] = function (...args: unknown[]) {
       const builder = this as QueryBuilderInstance;
 
-      // Get options from the client at runtime (not from closure)
-      const runtimeOptions = builder.client?.[KNEX_PREPARED_OPTIONS_SYMBOL] as ResolvedKnexPreparedOptions | undefined;
-
       // Get current metadata
       const metadata = getQueryBuilderMetadata(builder);
 
-      // If rewriteInClauses is enabled, rewrite to = ANY() / <> ALL()
-      if (runtimeOptions?.rewriteInClauses && args.length >= 2) {
+      // If rewriteInClauses is enabled in metadata, rewrite to = ANY() / <> ALL()
+      if (metadata?.rewriteInClauses && args.length >= 2) {
         const [column, values] = args;
 
         // Only rewrite if we have an array of values

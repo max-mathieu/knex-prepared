@@ -1,5 +1,7 @@
 import type { Knex } from 'knex';
 import { setQueryBuilderMetadata } from './query-builder';
+import type { ResolvedKnexPreparedOptions } from './types';
+import { KNEX_PREPARED_OPTIONS_SYMBOL } from './symbols';
 
 /** QueryBuilder with prepared statement metadata pre-configured. */
 export type PreparedQueryBuilder<
@@ -14,6 +16,11 @@ export interface PreparedFactory {
   ): PreparedQueryBuilder<TRecord, TResult>;
 }
 
+interface KnexClient {
+  [KNEX_PREPARED_OPTIONS_SYMBOL]?: ResolvedKnexPreparedOptions;
+  [key: string]: unknown;
+}
+
 /** Adds the `knex.prepared(tableName)` factory method. */
 export const addPreparedFactory = (knex: Knex): Knex & { prepared: PreparedFactory } => {
   const extended = knex as Knex & { prepared: PreparedFactory };
@@ -22,7 +29,15 @@ export const addPreparedFactory = (knex: Knex): Knex & { prepared: PreparedFacto
     tableName: string
   ): PreparedQueryBuilder<TRecord, TResult> {
     const builder = knex<TRecord, TResult>(tableName);
-    const metadata = { name: 'auto' as const };
+
+    // Get the rewriteInClauses option from the knex instance's client
+    const knexClient = (knex as unknown as { client: KnexClient }).client;
+    const options = knexClient?.[KNEX_PREPARED_OPTIONS_SYMBOL];
+
+    const metadata = {
+      name: 'auto' as const,
+      rewriteInClauses: options?.rewriteInClauses,
+    };
 
     // Type assertion needed to access internal QueryBuilder methods
     setQueryBuilderMetadata(builder as never, metadata);
