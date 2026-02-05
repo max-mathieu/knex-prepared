@@ -1,91 +1,94 @@
 # knex-prepared Benchmark Results
 
-**Generated:** 2026-02-05T02:33:18.010Z
+**Generated:** 2026-02-05T18:33:03.507Z
 
 **Iterations per test:** 1,000
-**Warmup iterations:** 50 (excluded from measurements to ensure stable results)
+**Warmup iterations:** 10 (excluded from measurements to ensure stable results)
 **Connection pool:** Single connection (min: 1, max: 1) for consistent results
 **Test Data:** 1,000 users, 5,000 posts
 
-## Simple SELECT by ID
+**Methodology:** Each iteration executes all query variants to properly test prepared statement caching. 
+With named prepared statements, each distinct query is cached and reused. Without names, PostgreSQL must reparse/replan for each different query.
+
+## Simple SELECT Queries
 
 | Metric | Regular (ms) | Prepared (ms) | Change |
 |--------|--------------|---------------|--------|
-| P50 | 4.042 | 3.976 | -1.6% |
-| P90 | 4.920 | 4.832 | -1.8% |
-| P99 | 10.169 | 7.759 | -23.7% |
-| Avg | 4.307 | 4.181 | -2.9% |
+| P50 | 1.837 | 1.732 | -5.7% |
+| P90 | 2.312 | 2.897 | +25.3% |
+| P99 | 3.506 | 7.692 | +119.4% |
+| Avg | 1.950 | 2.089 | +7.1% |
 
-## SELECT with static WHERE clause
+## SELECT with WHERE Clause
 
 | Metric | Regular (ms) | Prepared (ms) | Change |
 |--------|--------------|---------------|--------|
-| P50 | 5.306 | 5.317 | +0.2% |
-| P90 | 7.454 | 7.212 | -3.2% |
-| P99 | 10.705 | 9.143 | -14.6% |
-| Avg | 5.773 | 5.745 | -0.5% |
+| P50 | 92.564 | 94.201 | +1.8% |
+| P90 | 120.442 | 136.978 | +13.7% |
+| P99 | 278.841 | 266.068 | -4.6% |
+| Avg | 102.668 | 106.339 | +3.6% |
 
 ## Multiple WHERE Conditions
 
 | Metric | Regular (ms) | Prepared (ms) | Change |
 |--------|--------------|---------------|--------|
-| P50 | 5.131 | 5.149 | +0.3% |
-| P90 | 6.934 | 7.118 | +2.6% |
-| P99 | 9.756 | 17.541 | +79.8% |
-| Avg | 5.585 | 5.834 | +4.5% |
+| P50 | 38.289 | 37.250 | -2.7% |
+| P90 | 54.736 | 56.332 | +2.9% |
+| P99 | 131.383 | 154.494 | +17.6% |
+| Avg | 43.363 | 43.438 | +0.2% |
 
 ## Simple JOIN
 
 | Metric | Regular (ms) | Prepared (ms) | Change |
 |--------|--------------|---------------|--------|
-| P50 | 4.215 | 4.418 | +4.8% |
-| P90 | 5.358 | 5.807 | +8.4% |
-| P99 | 16.958 | 21.946 | +29.4% |
-| Avg | 4.787 | 5.108 | +6.7% |
+| P50 | 123.402 | 130.697 | +5.9% |
+| P90 | 163.913 | 161.850 | -1.3% |
+| P99 | 408.446 | 334.307 | -18.2% |
+| Avg | 137.662 | 141.266 | +2.6% |
 
 ## Complex JOIN with Conditions
 
 | Metric | Regular (ms) | Prepared (ms) | Change |
 |--------|--------------|---------------|--------|
-| P50 | 9.724 | 10.655 | +9.6% |
-| P90 | 13.243 | 16.900 | +27.6% |
-| P99 | 40.649 | 46.642 | +14.7% |
-| Avg | 11.158 | 12.780 | +14.5% |
+| P50 | 44.235 | 69.615 | +57.4% |
+| P90 | 49.089 | 87.632 | +78.5% |
+| P99 | 77.428 | 255.932 | +230.5% |
+| Avg | 46.963 | 77.440 | +64.9% |
 
 ## Aggregation with GROUP BY
 
 | Metric | Regular (ms) | Prepared (ms) | Change |
 |--------|--------------|---------------|--------|
-| P50 | 11.433 | 11.221 | -1.9% |
-| P90 | 12.920 | 13.323 | +3.1% |
-| P99 | 30.573 | 25.074 | -18.0% |
-| Avg | 12.285 | 12.127 | -1.3% |
+| P50 | 27.514 | 27.628 | +0.4% |
+| P90 | 30.567 | 32.414 | +6.0% |
+| P99 | 70.135 | 81.637 | +16.4% |
+| Avg | 29.872 | 30.121 | +0.8% |
 
 ## IN Clauses with rewriteInClauses Option
 
 The `rewriteInClauses` option enables prepared statement name generation that accounts for IN clause size. 
-This test cycles through sizes 1-20 (1 iterations each, 20 total queries). 
+This test uses 10 different IN clause sizes. Each iteration executes all 10 queries. 
 **Default**: No prepared statements. 
-**Prepared**: Uses prepared statements, creates 20 different statements (one per size). 
+**Prepared**: Uses prepared statements, creates 10 different statements (one per size). 
 **Prepared + Rewrite**: Uses prepared statements with `rewriteInClauses`, creates only 1 statement and reuses it.
 
-### whereIn (mixed sizes 1-20)
+### whereIn (sizes 1-10)
 
 | Metric | Default (ms) | Prepared (ms) | Prepared + Rewrite (ms) | Prepared Change | Rewrite Change |
 |--------|--------------|---------------|-------------------------|-----------------|----------------|
-| P50 | 12.668 | 13.919 | 13.939 | +9.9% | +10.0% |
-| P90 | 15.104 | 17.327 | 21.786 | +14.7% | +44.2% |
-| P99 | 36.932 | 34.796 | 54.673 | -5.8% | +48.0% |
-| Avg | 13.482 | 14.642 | 15.652 | +8.6% | +16.1% |
+| P50 | 2.023 | 1.800 | 2.074 | -11.0% | +2.5% |
+| P90 | 2.307 | 2.043 | 4.387 | -11.5% | +90.1% |
+| P99 | 5.642 | 5.842 | 17.944 | +3.5% | +218.1% |
+| Avg | 2.163 | 2.084 | 3.318 | -3.7% | +53.4% |
 
-### whereNotIn (mixed sizes 1-20)
+### whereNotIn (sizes 1-10)
 
 | Metric | Default (ms) | Prepared (ms) | Prepared + Rewrite (ms) | Prepared Change | Rewrite Change |
 |--------|--------------|---------------|-------------------------|-----------------|----------------|
-| P50 | 52.131 | 54.145 | 53.794 | +3.9% | +3.2% |
-| P90 | 65.847 | 65.080 | 58.984 | -1.2% | -10.4% |
-| P99 | 86.024 | 91.246 | 84.435 | +6.1% | -1.8% |
-| Avg | 54.740 | 56.816 | 55.025 | +3.8% | +0.5% |
+| P50 | 12.178 | 15.139 | 15.099 | +24.3% | +24.0% |
+| P90 | 25.126 | 24.255 | 24.852 | -3.5% | -1.1% |
+| P99 | 39.298 | 43.477 | 52.056 | +10.6% | +32.5% |
+| Avg | 14.286 | 15.727 | 16.814 | +10.1% | +17.7% |
 
 ---
 
