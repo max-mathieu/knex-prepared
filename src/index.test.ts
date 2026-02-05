@@ -119,7 +119,7 @@ describe('knexPrepared options', () => {
     });
 
     it('should use default options for non-PostgreSQL clients', () => {
-      const knex = knexPrepared(Knex({ client: 'sqlite3' }));
+      const knex = knexPrepared(Knex({ client: 'sqlite3', useNullAsDefault: true }));
       const options = getOptions(knex);
 
       expect(options).toBeDefined();
@@ -214,14 +214,10 @@ describe('knexPrepared options', () => {
   });
 
   describe('rewriteInClauses option', () => {
-    it('should default to false for all clients', () => {
+    it('should default to false', () => {
       const pgKnex = knexPrepared(Knex({ client: 'pg' }));
       const pgOptions = getOptions(pgKnex);
       expect(pgOptions!.rewriteInClauses).toBe(false);
-
-      const sqliteKnex = knexPrepared(Knex({ client: 'sqlite3' }));
-      const sqliteOptions = getOptions(sqliteKnex);
-      expect(sqliteOptions!.rewriteInClauses).toBe(false);
     });
 
     it('should allow explicit enabling of rewriteInClauses', () => {

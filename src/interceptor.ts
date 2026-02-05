@@ -256,18 +256,7 @@ const processQueryMetadata = (
   }
 
   if (metadata.name !== null) {
-    if (bindings.length === 0) {
-      // This is a prepared statement with no bindings - likely not what user intended
-      if (!options.disableWarnings) {
-        // eslint-disable-next-line no-console
-        console.warn(
-          '[knex-prepared] Warning: Prepared statement with no bindings detected. ' +
-            'This may indicate that the query is not parameterized as intended.' +
-            'Prepared statement is automatically disabled for this query.'
-        );
-      }
-      metadata.name = null;
-    } else if (!options.rewriteInClauses && !options.disableWarnings && hasInClause(sql)) {
+    if (!options.rewriteInClauses && !options.disableWarnings && hasInClause(sql)) {
       // Warn about IN clauses
       // eslint-disable-next-line no-console
       console.warn(
