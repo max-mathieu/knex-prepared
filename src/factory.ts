@@ -1,6 +1,6 @@
 import type { Knex } from 'knex';
-import { setQueryBuilderMetadata } from './query-builder';
-import type { ResolvedKnexPreparedOptions } from './types';
+import { setQueryBuilderMetadata, type PreparedMetadata } from './query-builder';
+import type { KnexWithClient } from './types';
 import { KNEX_PREPARED_OPTIONS_SYMBOL } from './symbols';
 
 /** QueryBuilder with prepared statement metadata pre-configured. */
@@ -16,14 +16,9 @@ export interface PreparedFactory {
   ): PreparedQueryBuilder<TRecord, TResult>;
 }
 
-interface KnexClient {
-  [KNEX_PREPARED_OPTIONS_SYMBOL]?: ResolvedKnexPreparedOptions;
-  [key: string]: unknown;
-}
-
 /** Adds the `knex.prepared(tableName)` factory method. */
 export const addPreparedFactory = (knex: Knex): Knex & { prepared: PreparedFactory } => {
-  const extended = knex as Knex & { prepared: PreparedFactory };
+  const extended: Knex & { prepared?: PreparedFactory } = knex;
 
   extended.prepared = function <TRecord extends {} = Record<string, unknown>, TResult = unknown[]>(
     tableName: string
@@ -31,21 +26,20 @@ export const addPreparedFactory = (knex: Knex): Knex & { prepared: PreparedFacto
     const builder = knex<TRecord, TResult>(tableName);
 
     // Get the rewriteInClauses option from the knex instance's client
-    const knexClient = (knex as unknown as { client: KnexClient }).client;
-    const options = knexClient?.[KNEX_PREPARED_OPTIONS_SYMBOL];
+    const knexWithClient = knex as KnexWithClient;
+    const options = knexWithClient.client[KNEX_PREPARED_OPTIONS_SYMBOL];
 
-    const metadata = {
-      name: 'auto' as const,
+    const metadata: PreparedMetadata = {
+      name: 'auto',
       rewriteInClauses: options?.rewriteInClauses,
     };
 
-    // Type assertion needed to access internal QueryBuilder methods
-    setQueryBuilderMetadata(builder as never, metadata);
+    setQueryBuilderMetadata(builder, metadata);
 
-    return builder as PreparedQueryBuilder<TRecord, TResult>;
+    return builder;
   };
 
-  return extended;
+  return extended as Knex & { prepared: PreparedFactory };
 };
 
 // TypeScript module augmentation to add the factory method to Knex

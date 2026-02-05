@@ -133,6 +133,7 @@ const processQueryMetadata = (
   if (metadata.name !== null) {
     if (!options.disableWarnings && hasInClause(sql)) {
       // Warn about IN clauses, with specific method info if available
+
       // eslint-disable-next-line no-console
       console.warn(
         `[knex-prepared] Warning: Prepared statement with IN/NOT IN clause detected. ` +

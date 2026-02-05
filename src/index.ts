@@ -3,7 +3,8 @@ import { extendQueryBuilder } from './query-builder';
 import { attachPreparedStatementHook } from './interceptor';
 import { addPreparedFactory } from './factory';
 import { wrapTransactionMethod } from './transaction';
-import type { KnexPreparedOptions, ResolvedKnexPreparedOptions } from './types';
+import type { KnexPreparedOptions, ResolvedKnexPreparedOptions, KnexWithClient } from './types';
+import { setOptions } from './types';
 import { KNEX_PREPARED_OPTIONS_SYMBOL } from './symbols';
 
 /**
@@ -49,9 +50,12 @@ export const knexPrepared = <TKnex extends Knex = Knex>(
 ): TKnex & { prepared: (tableName: string) => Knex.QueryBuilder } => {
   const resolvedOptions = resolveOptions(options);
 
-  // Store options on knex instance
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (knex as any)[KNEX_PREPARED_OPTIONS_SYMBOL] = Object.freeze(resolvedOptions);
+  // Store options on knex instance and client using helper function
+  setOptions(knex, Object.freeze(resolvedOptions));
+
+  // Also store on client for query builder access
+  const knexWithClient = knex as KnexWithClient;
+  knexWithClient.client[KNEX_PREPARED_OPTIONS_SYMBOL] = resolvedOptions;
 
   extendQueryBuilder(knex);
   const extended = addPreparedFactory(knex);
