@@ -65,7 +65,9 @@ async function benchmark(
 }
 
 async function coolDown(delaySeconds: number) {
-  console.log(`  ⏱ Cooling down for ${delaySeconds} ${delaySeconds === 1 ? 'second' : 'seconds'}...`);
+  console.log(
+    `  ⏱ Cooling down for ${delaySeconds} ${delaySeconds === 1 ? 'second' : 'seconds'}...`
+  );
   await new Promise((resolve) => setTimeout(resolve, delaySeconds * 0));
 }
 
@@ -83,14 +85,14 @@ function getPreparedKnex(options?: KnexPreparedOptions) {
 }
 
 async function teardown() {
-  const knex = getBenchmarkKnex(); 
+  const knex = getBenchmarkKnex();
   await knex.schema.dropTableIfExists('posts');
   await knex.schema.dropTableIfExists('users');
   await knex.destroy();
 }
 
 async function setupDatabase() {
-  const knex = getBenchmarkKnex(); 
+  const knex = getBenchmarkKnex();
   await teardown();
 
   await knex.schema.createTable('users', (table) => {
@@ -175,7 +177,7 @@ function formatInClauseTable(
 
 async function main() {
   console.log('🚀 Starting knex-prepared benchmark...\n');
-  
+
   try {
     console.log('📊 Setting up database...');
     await setupDatabase();
@@ -185,9 +187,13 @@ async function main() {
     markdown.push('# knex-prepared Benchmark Results\n');
     markdown.push(`**Generated:** ${new Date().toISOString()}\n`);
     markdown.push(`**Iterations per test:** ${ITERATIONS.toLocaleString()}`);
-    markdown.push(`**Warmup iterations:** ${WARMUP_ITERATIONS} (excluded from measurements to ensure stable results)`);
+    markdown.push(
+      `**Warmup iterations:** ${WARMUP_ITERATIONS} (excluded from measurements to ensure stable results)`
+    );
     markdown.push(`**Connection pool:** Single connection (min: 1, max: 1) for consistent results`);
-    markdown.push(`**Test Data:** ${TABLE_USER_ROWS.toLocaleString()} users, ${(TABLE_POST_ROWS).toLocaleString()} posts\n`);
+    markdown.push(
+      `**Test Data:** ${TABLE_USER_ROWS.toLocaleString()} users, ${TABLE_POST_ROWS.toLocaleString()} posts\n`
+    );
 
     console.log('📈 Running benchmarks...\n');
 
@@ -299,10 +305,7 @@ async function main() {
     console.log('  6/7: Aggregation with GROUP BY...');
     const groupBy = await benchmark(async () => {
       const knex = getBenchmarkKnex();
-      await knex('posts')
-        .select('user_id')
-        .count('* as post_count')
-        .groupBy('user_id');
+      await knex('posts').select('user_id').count('* as post_count').groupBy('user_id');
       await knex.destroy();
     });
     await coolDown(1);
@@ -328,13 +331,13 @@ async function main() {
     markdown.push(
       `This test cycles through sizes 1-${MAX_WHERE_IN_SIZE} (${ITERATIONS_PER_IN_SIZE} iterations each, ${MAX_WHERE_IN_SIZE * ITERATIONS_PER_IN_SIZE} total queries). `
     );
-    markdown.push(
-      `**Default**: No prepared statements. `
-    );
+    markdown.push(`**Default**: No prepared statements. `);
     markdown.push(
       `**Prepared**: Uses prepared statements, creates ${MAX_WHERE_IN_SIZE} different statements (one per size). `
     );
-    markdown.push(`**Prepared + Rewrite**: Uses prepared statements with \`rewriteInClauses\`, creates only 1 statement and reuses it.\n`);
+    markdown.push(
+      `**Prepared + Rewrite**: Uses prepared statements with \`rewriteInClauses\`, creates only 1 statement and reuses it.\n`
+    );
 
     console.log(`    Testing whereIn with mixed sizes (1-${MAX_WHERE_IN_SIZE})...`);
     const whereInRegular = await benchmark(
@@ -434,7 +437,9 @@ async function main() {
     );
 
     markdown.push(`### whereNotIn (mixed sizes 1-${MAX_WHERE_IN_SIZE})\n`);
-    markdown.push(formatInClauseTable(whereNotInRegular, whereNotInPrepared, whereNotInRewrite) + '\n');
+    markdown.push(
+      formatInClauseTable(whereNotInRegular, whereNotInPrepared, whereNotInRewrite) + '\n'
+    );
 
     markdown.push('---\n');
     markdown.push('*Benchmark run with knex-prepared on PostgreSQL*');

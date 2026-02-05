@@ -276,7 +276,6 @@ const processQueryMetadata = (
           'Consider using rewriteInClauses option or rewriting to = ANY($1) / <> ALL($1) manually.'
       );
     }
-    
   }
 
   // Rewrite IN clauses if enabled
