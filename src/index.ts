@@ -13,8 +13,8 @@ const resolveOptions = (options: KnexPreparedOptions | undefined): ResolvedKnexP
   const autoNameHashLength = options?.autoNameHashLength ?? 16;
   const rewriteInClauses = options?.rewriteInClauses ?? false;
   const autoNameAllSelects = options?.autoNameAllSelects ?? false;
-  const disableInClausesWarning =
-    options?.disableInClausesWarning ?? process.env.NODE_ENV === 'production';
+  const disableWarnings =
+    options?.disableWarnings ?? process.env.NODE_ENV === 'production';
 
   // Validate autoNamePrefix
   if (typeof autoNamePrefix !== 'string' || autoNamePrefix.length === 0) {
@@ -36,7 +36,7 @@ const resolveOptions = (options: KnexPreparedOptions | undefined): ResolvedKnexP
     autoNameHashLength,
     rewriteInClauses,
     autoNameAllSelects,
-    disableInClausesWarning,
+    disableWarnings,
   };
 };
 

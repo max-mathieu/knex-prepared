@@ -33,7 +33,7 @@ export interface KnexPreparedOptions {
    * Defaults to true in production, false otherwise.
    * @default process.env.NODE_ENV === 'production'
    */
-  disableInClausesWarning?: boolean;
+  disableWarnings?: boolean;
 }
 
 /**
@@ -44,5 +44,5 @@ export interface ResolvedKnexPreparedOptions {
   autoNameHashLength: number;
   autoNameAllSelects: boolean;
   rewriteInClauses: boolean;
-  disableInClausesWarning: boolean;
+  disableWarnings: boolean;
 }

@@ -255,19 +255,28 @@ const processQueryMetadata = (
     return null;
   }
 
-  // Warn about IN clauses if conditions are met
-  if (
-    metadata.name !== null &&
-    !options.rewriteInClauses &&
-    !options.disableInClausesWarning &&
-    hasInClause(sql)
-  ) {
-    // eslint-disable-next-line no-console
-    console.warn(
-      '[knex-prepared] Warning: Prepared statement with IN/NOT IN clause detected. ' +
-        'Prepared statements with variable-length parameter lists can lead to poor plan caching. ' +
-        'Consider using rewriteInClauses option or rewriting to = ANY($1) / <> ALL($1) manually.'
-    );
+  if (metadata.name !== null) {
+    if (bindings.length === 0) {
+      // This is a prepared statement with no bindings - likely not what user intended
+      if (!options.disableWarnings) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          '[knex-prepared] Warning: Prepared statement with no bindings detected. ' +
+            'This may indicate that the query is not parameterized as intended.' +
+            'Prepared statement is automatically disabled for this query.'
+        );
+      }
+      metadata.name = null;
+    } else if (!options.rewriteInClauses && !options.disableWarnings && hasInClause(sql)) {
+      // Warn about IN clauses
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[knex-prepared] Warning: Prepared statement with IN/NOT IN clause detected. ' +
+          'Prepared statements with variable-length parameter lists can lead to poor plan caching. ' +
+          'Consider using rewriteInClauses option or rewriting to = ANY($1) / <> ALL($1) manually.'
+      );
+    }
+    
   }
 
   // Rewrite IN clauses if enabled
