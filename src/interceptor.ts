@@ -1,28 +1,26 @@
 import { createHash } from 'crypto';
 import { lru, type LRU } from 'tiny-lru';
+import type { Knex } from 'knex';
 import type { PreparedMetadata } from './query-builder';
 import type { KnexWithOptions, ResolvedKnexPreparedOptions } from './types';
-import { PREPARED_SYMBOL } from './symbols';
-import { KNEX_PREPARED_OPTIONS_SYMBOL } from './symbols';
-import { Knex } from 'knex';
+import { PREPARED_SYMBOL, KNEX_PREPARED_OPTIONS_SYMBOL } from './symbols';
 
-interface QueryData {
+/**
+ * Query data from Knex 'query' event.
+ */
+interface QueryEventData {
   queryContext?: {
     [PREPARED_SYMBOL]?: PreparedMetadata;
-    __rewrittenSql?: string;
-    __rewrittenBindings?: unknown[];
   };
   sql?: string | unknown;
   bindings?: unknown[];
   options?: Record<string, unknown>;
 }
 
-interface KnexClient {
-  query: (connection: Connection, obj: QueryObject) => Promise<unknown>;
-  acquireConnection: (...args: unknown[]) => Promise<Connection>;
-}
-
-interface QueryObject {
+/**
+ * Query object passed to client.query().
+ */
+interface PgQueryObject {
   sql: string;
   bindings: unknown[];
   queryContext?: {
@@ -35,12 +33,18 @@ interface QueryObject {
   [key: string]: unknown;
 }
 
-interface Connection {
+/**
+ * PostgreSQL connection from pg driver.
+ */
+interface PgConnection {
   query: (config: PgQueryConfig, values?: unknown, callback?: unknown) => unknown;
-  __knexPreparedWrapped?: boolean;
+  [PREPARED_SYMBOL]?: boolean;
   [key: string]: unknown;
 }
 
+/**
+ * Query configuration for pg driver.
+ */
 interface PgQueryConfig {
   text: string;
   values?: unknown[];
@@ -48,12 +52,11 @@ interface PgQueryConfig {
   [key: string]: unknown;
 }
 
-// Store rewrite instructions indexed by original SQL (before pg driver processes it)
-// The key is the SQL after Knex formatting but before pg driver converts ? to $n
-const pendingRewrites = new Map<
-  string,
-  { rewrittenSql: string; rewrittenBindings: unknown[]; preparedName: string }
->();
+/**
+ * Store prepared statement names for queries.
+ * Maps SQL (after Knex formatting) -> prepared statement name.
+ */
+const pendingNames = new Map<string, string>();
 
 // LRU cache for auto-generated prepared statement names
 // Maps normalized SQL -> generated name
@@ -102,67 +105,40 @@ const hasInClause = (sql: string): boolean => {
 };
 
 /**
- * Result of processing a query for prepared statements.
+ * Processes query metadata and returns the prepared statement name (if any).
+ * Handles auto-naming and warnings.
  */
-interface ProcessedQuery {
-  metadata: PreparedMetadata;
-  sql: string;
-  bindings: unknown[];
-  preparedName: string | null;
-}
-
-/**
- * Processes query metadata, handles auto-naming, warnings, and IN clause rewriting.
- * Returns processed query information.
- */
-const processQueryMetadata = (
+const getPreparedStatementName = (
   metadata: PreparedMetadata | undefined,
   sql: string,
-  bindings: unknown[],
   options: ResolvedKnexPreparedOptions
-): ProcessedQuery | null => {
+): string | null => {
   // Auto-name SELECT queries if enabled and not already prepared
   if (!metadata && options.autoNameAllSelects && isSelectQuery(sql)) {
     metadata = { name: 'auto' };
   }
 
-  if (!metadata) {
+  if (!metadata || metadata.name === null) {
     return null;
   }
 
-  if (metadata.name !== null) {
-    if (!options.disableWarnings && hasInClause(sql)) {
-      // Warn about IN clauses, with specific method info if available
-
-      // eslint-disable-next-line no-console
-      console.warn(
-        `[knex-prepared] Warning: Prepared statement with IN/NOT IN clause detected. ` +
-          'Prepared statements with variable-length parameter lists can lead to poor plan caching. ' +
-          'Consider enabling rewriteInClauses option or rewriting to = ANY($1) / <> ALL($1) manually.'
-      );
-    }
+  // Warn about IN clauses if not disabled
+  if (!options.disableWarnings && hasInClause(sql)) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[knex-prepared] Warning: Prepared statement with IN/NOT IN clause detected. ` +
+        'Prepared statements with variable-length parameter lists can lead to poor plan caching. ' +
+        'Consider using rewriteInClauses option or rewriting to = ANY($1) / <> ALL($1) manually.'
+    );
   }
 
   // Generate or use prepared statement name
-  let preparedName: string | null = null;
-  if (metadata.name !== null) {
-    preparedName = metadata.name === 'auto' ? generateAutoName(sql, options) : metadata.name;
-  }
-
-  return {
-    metadata,
-    sql,
-    bindings,
-    preparedName,
-  };
+  return metadata.name === 'auto' ? generateAutoName(sql, options) : metadata.name;
 };
 
 /**
- * Attaches a query hook to inject prepared statement names and rewrite IN clauses before execution.
+ * Attaches a query hook to inject prepared statement names before execution.
  * For PostgreSQL, the `name` property tells the pg driver to use prepared statements.
- *
- * This wraps the client.query() method to intercept queries before they're sent to the database,
- * allowing us to rewrite the SQL and inject the prepared statement name.
  */
 export const attachPreparedStatementHook = (knex: Knex): void => {
   const options = (knex as KnexWithOptions)[KNEX_PREPARED_OPTIONS_SYMBOL];
@@ -171,99 +147,72 @@ export const attachPreparedStatementHook = (knex: Knex): void => {
     throw new Error('knex-prepared options not found. Did you call knexPrepared()?');
   }
 
-  // Listen to 'query' event to prepare rewrites before they reach the driver
-  knex.on('query', (queryData: QueryData) => {
-    if (typeof queryData.sql !== 'string') {
-      return;
-    }
+  const client = knex.client as Knex.Client & {
+    query: (connection: PgConnection, obj: PgQueryObject) => Promise<unknown>;
+    acquireConnection: (...args: unknown[]) => Promise<PgConnection>;
+  };
 
-    const originalSql = queryData.sql;
-    const bindings = queryData.bindings || [];
-    const metadata = queryData.queryContext?.[PREPARED_SYMBOL];
-
-    // Process query with $n notation (after Knex/pg formatting)
-    const processed = processQueryMetadata(metadata, originalSql, bindings, options);
-
-    if (processed) {
-      // Store metadata in queryContext for downstream processing
-      if (!queryData.queryContext) {
-        queryData.queryContext = {};
-      }
-      queryData.queryContext[PREPARED_SYMBOL] = processed.metadata;
-
-      // Store for connection.query() to pick up (if prepared statement is enabled)
-      if (processed.preparedName) {
-        pendingRewrites.set(originalSql, {
-          rewrittenSql: processed.sql,
-          rewrittenBindings: processed.bindings,
-          preparedName: processed.preparedName,
-        });
-      }
-    }
-  });
-
-  const client = (knex as unknown as { client: KnexClient }).client;
   const originalQuery = client.query.bind(client);
   const originalAcquireConnection = client.acquireConnection.bind(client);
 
   // Wrap client.query() for non-transaction queries
-  client.query = function (connection: Connection, obj: QueryObject) {
+  client.query = function (connection: PgConnection, obj: PgQueryObject) {
     if (typeof obj.sql === 'string') {
       const metadata = obj.queryContext?.[PREPARED_SYMBOL];
-      const bindings = obj.bindings || [];
+      const preparedName = getPreparedStatementName(metadata, obj.sql, options);
 
-      // Process query with ? notation (pre-driver)
-      const processed = processQueryMetadata(metadata, obj.sql, bindings, options);
-
-      if (processed) {
-        // Apply rewritten SQL and bindings
-        obj.sql = processed.sql;
-        obj.bindings = processed.bindings;
-
+      if (preparedName) {
         // Inject prepared statement name
-        if (processed.preparedName) {
-          obj.options = obj.options || {};
-          obj.options.name = processed.preparedName;
-        }
-
-        // Ensure queryContext is defined for later access
-        obj.queryContext = obj.queryContext || ({} as QueryObject['queryContext']);
-        obj.queryContext![PREPARED_SYMBOL] = processed.metadata;
+        obj.options = obj.options || {};
+        obj.options.name = preparedName;
       }
     }
 
     return originalQuery(connection, obj);
   };
 
+
+  // Listen to 'query' event to store prepared statement names for transaction queries (which bypass client.query)
+  knex.on('query', (queryData: QueryEventData) => {
+    if (typeof queryData.sql !== 'string') {
+      return;
+    }
+
+    const metadata = queryData.queryContext?.[PREPARED_SYMBOL];
+    const preparedName = getPreparedStatementName(metadata, queryData.sql, options);
+
+    if (preparedName) {
+      // Store the prepared name for this SQL to be picked up by connection.query()
+      pendingNames.set(queryData.sql, preparedName);
+    }
+  });
+
   // Wrap acquireConnection to patch connections for transactions
   client.acquireConnection = async function (...args: unknown[]) {
     const connection = await originalAcquireConnection(...args);
 
     // Wrap the connection's query method if not already wrapped
-    if (connection && !connection.__knexPreparedWrapped) {
+    if (connection && !connection[PREPARED_SYMBOL]) {
       const originalConnectionQuery = connection.query.bind(connection);
 
       connection.query = function (config: PgQueryConfig, values?: unknown, callback?: unknown) {
         // For pg driver, config is { text: sql, values: bindings, ... }
         if (config && typeof config === 'object' && config.text) {
-          const originalSql = config.text;
-          const rewrite = pendingRewrites.get(originalSql);
+          const preparedName = pendingNames.get(config.text);
 
-          if (rewrite) {
-            // Apply the rewritten SQL, bindings, and prepared statement name
-            config.text = rewrite.rewrittenSql;
-            config.values = rewrite.rewrittenBindings;
-            config.name = rewrite.preparedName;
+          if (preparedName) {
+            // Inject prepared statement name
+            config.name = preparedName;
 
             // Clean up to prevent memory leaks
-            pendingRewrites.delete(originalSql);
+            pendingNames.delete(config.text);
           }
         }
 
         return originalConnectionQuery(config, values, callback);
       };
 
-      connection.__knexPreparedWrapped = true;
+      connection[PREPARED_SYMBOL] = true;
     }
 
     return connection;
