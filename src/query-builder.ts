@@ -25,17 +25,10 @@ export type InClauseRewriteType = 'whereIn' | 'whereNotIn' | 'orWhereIn' | 'orWh
 /**
  * QueryBuilder instance with symbol-based property access.
  */
-interface QueryBuilderWithSymbol {
+interface QueryBuilderWithSymbol extends Knex.QueryBuilder {
   [PREPARED_SYMBOL]?: PreparedMetadata;
   _knexPreparedMetadata?: PreparedMetadata;
   client: KnexClient;
-  queryContext(context?: unknown): unknown;
-  whereIn(...args: unknown[]): unknown;
-  whereNotIn(...args: unknown[]): unknown;
-  orWhereIn(...args: unknown[]): unknown;
-  orWhereNotIn(...args: unknown[]): unknown;
-  whereRaw(...args: unknown[]): unknown;
-  orWhereRaw(...args: unknown[]): unknown;
 }
 
 /**

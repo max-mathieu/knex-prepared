@@ -73,9 +73,8 @@ export interface KnexWithOptions extends Knex, KnexWithSymbol {
 /**
  * Knex client interface with options symbol.
  */
-export interface KnexClient {
+export interface KnexClient extends Knex.Client {
   [KNEX_PREPARED_OPTIONS_SYMBOL]?: ResolvedKnexPreparedOptions;
-  [key: string]: unknown;
 }
 
 /**
