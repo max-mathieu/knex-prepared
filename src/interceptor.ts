@@ -1,12 +1,10 @@
 import { createHash } from 'crypto';
-import type { Knex } from 'knex';
-import { typedRegExp } from 'ts-regexp';
-import {
-  PREPARED_SYMBOL,
-  KNEX_PREPARED_OPTIONS_SYMBOL,
-  type PreparedMetadata,
-} from './query-builder';
-import type { ResolvedKnexPreparedOptions } from './types';
+import { lru, type LRU } from 'tiny-lru';
+import type { PreparedMetadata } from './query-builder';
+import type { KnexWithOptions, ResolvedKnexPreparedOptions } from './types';
+import { PREPARED_SYMBOL } from './symbols';
+import { KNEX_PREPARED_OPTIONS_SYMBOL } from './symbols';
+import { Knex } from 'knex';
 
 interface QueryData {
   queryContext?: {
@@ -17,10 +15,6 @@ interface QueryData {
   sql?: string | unknown;
   bindings?: unknown[];
   options?: Record<string, unknown>;
-}
-
-interface KnexWithOptions extends Knex {
-  [KNEX_PREPARED_OPTIONS_SYMBOL]?: ResolvedKnexPreparedOptions;
 }
 
 interface KnexClient {
@@ -61,161 +55,43 @@ const pendingRewrites = new Map<
   { rewrittenSql: string; rewrittenBindings: unknown[]; preparedName: string }
 >();
 
+// LRU cache for auto-generated prepared statement names
+// Maps normalized SQL -> generated name
+let autoNameCache: LRU<string> | null = null;
+
 /**
  * Generates a deterministic prepared statement name from SQL using SHA-256 hashing.
  * Format: `{prefix}-{first N hex chars of hash}`. Same SQL always produces the same name.
+ * Uses LRU cache to avoid re-hashing the same SQL repeatedly.
  */
-const generatePreparedStatementName = (
-  sql: string,
-  options: ResolvedKnexPreparedOptions
-): string => {
-  const normalized = sql.trim().replace(/\s+/g, ' ');
-  const hash = createHash('sha256').update(normalized).digest('hex');
-  return `${options.autoNamePrefix}-${hash.substring(0, options.autoNameHashLength)}`;
-};
+const generateAutoName = (sql: string, options: ResolvedKnexPreparedOptions): string => {
+  const normalizedSql = sql.trim().replace(/\s+/g, ' ');
 
-interface InClauseMatch {
-  fullMatch: string;
-  column: string;
-  isNotIn: boolean;
-  placeholderCount: number;
-  index: number;
-}
-
-/**
- * Finds all IN clause patterns in the SQL query.
- * Only supports $n (PostgreSQL) parameter notation.
- */
-const findInClauses = (sql: string, useDollarNotation: boolean): InClauseMatch[] => {
-  // Match: column [NOT] IN (?, ?, ...) or column [NOT] IN ($1, $2, ...)
-  const placeholderPattern = useDollarNotation ? '\\$\\d+' : '\\?';
-  const regex = typedRegExp(
-    `(?<column>\\S+)\\s+(?<inOrNotIn>not\\s+in|in)\\s*\\((?<placeholders>${placeholderPattern}(?:,\\s*${placeholderPattern})*)\\)`,
-    'gi'
-  );
-  const matches: InClauseMatch[] = [];
-
-  for (const match of regex.matchAllIn(sql)) {
-    const fullMatch = match[0];
-    const column = match.groups.column;
-    const isNotIn = match.groups.inOrNotIn.toLowerCase() === 'not in';
-    const placeholders = match.groups.placeholders;
-    // Count placeholders
-    const placeholderMatches = useDollarNotation
-      ? placeholders.match(/\$\d+/g) || []
-      : placeholders.match(/\?/g) || [];
-    const placeholderCount = placeholderMatches.length;
-
-    matches.push({
-      fullMatch,
-      column,
-      isNotIn,
-      placeholderCount,
-      index: match.index,
-    });
+  if (!autoNameCache && options.autoNameCacheSize > 0) {
+    autoNameCache = lru<string>(options.autoNameCacheSize);
   }
-
-  return matches;
-};
-
-/**
- * Infers the PostgreSQL array type from a value.
- */
-const inferPostgresArrayType = (value: unknown): string => {
-  if (typeof value === 'number') {
-    return Number.isInteger(value) ? 'int' : 'float';
-  }
-  if (typeof value === 'string') {
-    return 'text';
-  }
-  if (typeof value === 'boolean') {
-    return 'boolean';
-  }
-  if (value instanceof Date) {
-    return 'timestamp';
-  }
-  return 'text';
-};
-
-/**
- * Rewrites IN clauses to = ANY() for better prepared statement caching.
- */
-const rewriteInClausesInQuery = (
-  sql: string,
-  bindings: unknown[],
-  useDollarNotation: boolean
-): { sql: string; bindings: unknown[] } => {
-  const matches = findInClauses(sql, useDollarNotation);
-
-  if (matches.length === 0) {
-    return { sql, bindings };
-  }
-
-  // Process matches in reverse order to avoid index issues
-  matches.reverse();
-
-  let newSql = sql;
-  const newBindings = [...bindings];
-
-  for (const match of matches) {
-    // Calculate actual binding index
-    const sqlBeforeMatch = sql.substring(0, match.index);
-    const placeholdersBefore = useDollarNotation
-      ? (sqlBeforeMatch.match(/\$\d+/g) || []).length
-      : (sqlBeforeMatch.match(/\?/g) || []).length;
-    const startIndex = placeholdersBefore;
-
-    // Extract the values for this IN clause
-    const values = newBindings.splice(startIndex, match.placeholderCount);
-
-    // Infer type from first value
-    const arrayType = values.length > 0 ? inferPostgresArrayType(values[0]) : 'text';
-
-    // Create the replacement
-    const operator = match.isNotIn ? '<> ALL' : '= ANY';
-    let replacement: string;
-
-    if (useDollarNotation) {
-      // Using $n notation - need to calculate parameter number
-      const newSqlBeforeMatch = newSql.substring(0, match.index);
-      const paramsBeforeInNewSql = (newSqlBeforeMatch.match(/\$\d+/g) || []).length;
-      const paramNumber = paramsBeforeInNewSql + 1;
-      replacement = `${match.column} ${operator}($${paramNumber}::${arrayType}[])`;
-    } else {
-      // Using ? notation - just use single ?
-      replacement = `${match.column} ${operator}(?::${arrayType}[])`;
+  if (autoNameCache) {
+    const cached = autoNameCache.get(normalizedSql);
+    if (cached) {
+      return cached;
     }
-
-    // Get the SQL before and after this match
-    const beforeMatch = newSql.substring(0, match.index);
-    const afterMatch = newSql.substring(match.index + match.fullMatch.length);
-
-    // Renumber placeholders if using $n notation
-    let processedAfter = afterMatch;
-    if (useDollarNotation) {
-      const shift = match.placeholderCount - 1;
-      processedAfter = afterMatch.replace(/\$(\d+)/g, (_, num) => {
-        const oldNum = parseInt(num, 10);
-        const newNum = oldNum - shift;
-        return `$${newNum}`;
-      });
-    }
-
-    // Replace in SQL (working backwards from end)
-    newSql = beforeMatch + replacement + processedAfter;
-
-    // Insert array as single binding
-    newBindings.splice(startIndex, 0, values);
   }
 
-  return { sql: newSql, bindings: newBindings };
+  const hash = createHash('sha256').update(normalizedSql).digest('hex');
+  const name = `${options.autoNamePrefix}-${hash.substring(0, options.autoNameHashLength)}`;
+
+  if (autoNameCache) {
+    autoNameCache.set(normalizedSql, name);
+  }
+
+  return name;
 };
 
 /**
  * Checks if a SQL query is a SELECT statement.
  */
 const isSelectQuery = (sql: string): boolean => {
-  return /^\s*select\b/i.test(sql.trim());
+  return /^select\b/i.test(sql.trim());
 };
 
 /**
@@ -243,8 +119,7 @@ const processQueryMetadata = (
   metadata: PreparedMetadata | undefined,
   sql: string,
   bindings: unknown[],
-  options: ResolvedKnexPreparedOptions,
-  useDollarNotation: boolean
+  options: ResolvedKnexPreparedOptions
 ): ProcessedQuery | null => {
   // Auto-name SELECT queries if enabled and not already prepared
   if (!metadata && options.autoNameAllSelects && isSelectQuery(sql)) {
@@ -256,39 +131,31 @@ const processQueryMetadata = (
   }
 
   if (metadata.name !== null) {
-    if (!options.rewriteInClauses && !options.disableWarnings && hasInClause(sql)) {
-      // Warn about IN clauses
+    if (!options.disableWarnings && hasInClause(sql)) {
+      // Warn about IN clauses, with specific method info if available
+      const methodsUsed = metadata.inClauseRewrites
+        ? Array.from(metadata.inClauseRewrites.keys()).join(', ')
+        : 'whereIn/whereNotIn';
+
       // eslint-disable-next-line no-console
       console.warn(
-        '[knex-prepared] Warning: Prepared statement with IN/NOT IN clause detected. ' +
+        `[knex-prepared] Warning: Prepared statement with IN/NOT IN clause detected (used ${methodsUsed}). ` +
           'Prepared statements with variable-length parameter lists can lead to poor plan caching. ' +
-          'Consider using rewriteInClauses option or rewriting to = ANY($1) / <> ALL($1) manually.'
+          'Consider enabling rewriteInClauses option or rewriting to = ANY($1) / <> ALL($1) manually.'
       );
     }
-  }
-
-  // Rewrite IN clauses if enabled
-  let processedSql = sql;
-  let processedBindings = bindings;
-  if (options.rewriteInClauses && metadata.name !== null) {
-    const rewritten = rewriteInClausesInQuery(sql, bindings, useDollarNotation);
-    processedSql = rewritten.sql;
-    processedBindings = rewritten.bindings;
   }
 
   // Generate or use prepared statement name
   let preparedName: string | null = null;
   if (metadata.name !== null) {
-    preparedName =
-      metadata.name === 'auto'
-        ? generatePreparedStatementName(processedSql, options)
-        : metadata.name;
+    preparedName = metadata.name === 'auto' ? generateAutoName(sql, options) : metadata.name;
   }
 
   return {
     metadata,
-    sql: processedSql,
-    bindings: processedBindings,
+    sql,
+    bindings,
     preparedName,
   };
 };
@@ -318,7 +185,7 @@ export const attachPreparedStatementHook = (knex: Knex): void => {
     const metadata = queryData.queryContext?.[PREPARED_SYMBOL];
 
     // Process query with $n notation (after Knex/pg formatting)
-    const processed = processQueryMetadata(metadata, originalSql, bindings, options, true);
+    const processed = processQueryMetadata(metadata, originalSql, bindings, options);
 
     if (processed) {
       // Store metadata in queryContext for downstream processing
@@ -349,7 +216,7 @@ export const attachPreparedStatementHook = (knex: Knex): void => {
       const bindings = obj.bindings || [];
 
       // Process query with ? notation (pre-driver)
-      const processed = processQueryMetadata(metadata, obj.sql, bindings, options, false);
+      const processed = processQueryMetadata(metadata, obj.sql, bindings, options);
 
       if (processed) {
         // Apply rewritten SQL and bindings

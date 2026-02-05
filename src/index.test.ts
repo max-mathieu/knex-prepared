@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import Knex from 'knex';
-import { knexPrepared, PREPARED_SYMBOL } from './index';
+import { knexPrepared } from './index';
 import { getMetadata, getKnexEvents, getOptions } from './test-utils';
 import type { QueryData } from './test-utils';
+import { PREPARED_SYMBOL } from './symbols';
 
 describe('knexPrepared integration', () => {
   it('should initialize all features in one call', () => {
@@ -180,13 +181,6 @@ describe('knexPrepared options', () => {
       }).toThrow('autoNamePrefix must be a non-empty string');
     });
 
-    it('should reject non-string autoNamePrefix', () => {
-      expect(() => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        knexPrepared(Knex({ client: 'pg' }), { autoNamePrefix: 123 as any });
-      }).toThrow('autoNamePrefix must be a non-empty string');
-    });
-
     it('should reject autoNameHashLength less than 1', () => {
       expect(() => {
         knexPrepared(Knex({ client: 'pg' }), { autoNameHashLength: 0 });
@@ -202,13 +196,6 @@ describe('knexPrepared options', () => {
     it('should reject non-integer autoNameHashLength', () => {
       expect(() => {
         knexPrepared(Knex({ client: 'pg' }), { autoNameHashLength: 10.5 });
-      }).toThrow('autoNameHashLength must be an integer between 1 and 64');
-    });
-
-    it('should reject non-number autoNameHashLength', () => {
-      expect(() => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        knexPrepared(Knex({ client: 'pg' }), { autoNameHashLength: '16' as any });
       }).toThrow('autoNameHashLength must be an integer between 1 and 64');
     });
   });

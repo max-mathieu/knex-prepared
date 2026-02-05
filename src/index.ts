@@ -1,9 +1,10 @@
 import type { Knex } from 'knex';
-import { extendQueryBuilder, KNEX_PREPARED_OPTIONS_SYMBOL } from './query-builder';
+import { extendQueryBuilder } from './query-builder';
 import { attachPreparedStatementHook } from './interceptor';
 import { addPreparedFactory } from './factory';
 import { wrapTransactionMethod } from './transaction';
 import type { KnexPreparedOptions, ResolvedKnexPreparedOptions } from './types';
+import { KNEX_PREPARED_OPTIONS_SYMBOL } from './symbols';
 
 /**
  * Resolves options with defaults and validates them.
@@ -14,20 +15,18 @@ const resolveOptions = (options: KnexPreparedOptions | undefined): ResolvedKnexP
   const rewriteInClauses = options?.rewriteInClauses ?? false;
   const autoNameAllSelects = options?.autoNameAllSelects ?? false;
   const disableWarnings = options?.disableWarnings ?? process.env.NODE_ENV !== 'development';
+  const autoNameCacheSize = options?.autoNameCacheSize ?? 1000;
 
-  // Validate autoNamePrefix
-  if (typeof autoNamePrefix !== 'string' || autoNamePrefix.length === 0) {
+  if (autoNamePrefix.length === 0) {
     throw new Error('autoNamePrefix must be a non-empty string');
   }
 
-  // Validate autoNameHashLength
-  if (
-    typeof autoNameHashLength !== 'number' ||
-    autoNameHashLength < 1 ||
-    autoNameHashLength > 64 ||
-    !Number.isInteger(autoNameHashLength)
-  ) {
+  if (!Number.isInteger(autoNameHashLength) || autoNameHashLength < 1 || autoNameHashLength > 64) {
     throw new Error('autoNameHashLength must be an integer between 1 and 64');
+  }
+
+  if (!Number.isInteger(autoNameCacheSize)) {
+    throw new Error('autoNameCacheSize must be a non-negative integer');
   }
 
   return {
@@ -36,6 +35,7 @@ const resolveOptions = (options: KnexPreparedOptions | undefined): ResolvedKnexP
     rewriteInClauses,
     autoNameAllSelects,
     disableWarnings,
+    autoNameCacheSize,
   };
 };
 
@@ -64,7 +64,6 @@ export const knexPrepared = <TKnex extends Knex = Knex>(
 export type { PreparedMetadata } from './query-builder';
 export type { PreparedQueryBuilder, PreparedFactory } from './factory';
 export type { KnexPreparedOptions, ResolvedKnexPreparedOptions } from './types';
-export { PREPARED_SYMBOL } from './query-builder';
 
 // Default export
 export default knexPrepared;

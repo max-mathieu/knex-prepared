@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import Knex from 'knex';
 import { knexPrepared } from './index';
-import { PREPARED_SYMBOL } from './query-builder';
+import { PREPARED_SYMBOL } from './symbols';
 import type { PreparedMetadata } from './query-builder';
 import { getKnexEvents } from './test-utils';
 import type { QueryData } from './test-utils';

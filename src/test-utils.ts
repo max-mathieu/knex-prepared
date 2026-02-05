@@ -1,14 +1,10 @@
 import type { Knex } from 'knex';
 import type { PreparedMetadata } from './query-builder';
-import type { ResolvedKnexPreparedOptions } from './types';
-import { PREPARED_SYMBOL, KNEX_PREPARED_OPTIONS_SYMBOL } from './query-builder';
+import type { KnexWithOptions, ResolvedKnexPreparedOptions } from './types';
+import { PREPARED_SYMBOL, KNEX_PREPARED_OPTIONS_SYMBOL } from './symbols';
 
 export interface KnexInternal extends Knex {
   _events?: { query?: unknown; [key: string]: unknown };
-}
-
-export interface KnexWithOptions extends Knex {
-  [KNEX_PREPARED_OPTIONS_SYMBOL]?: ResolvedKnexPreparedOptions;
 }
 
 export interface QueryBuilderWithMetadata extends Knex.QueryBuilder {

@@ -57,9 +57,10 @@ describe.skipIf(shouldSkip)('Integration tests with PostgreSQL', () => {
     callback: (
       trx: typeof knex,
       getPreparedStatements: (names?: string | string[]) => Promise<PgPreparedStatement[]>
-    ) => Promise<T>
+    ) => Promise<T>,
+    thisKnex = knex
   ): Promise<T> {
-    return knex.transaction(async (trx) => {
+    return thisKnex.transaction(async (trx) => {
       const getPreparedStatements = async (
         names?: string | string[]
       ): Promise<PgPreparedStatement[]> => {
@@ -91,7 +92,6 @@ describe.skipIf(shouldSkip)('Integration tests with PostgreSQL', () => {
       const users = await knex('users').select('*').orderBy('id');
       expect(users).toHaveLength(3);
 
-      // Verify queries work in transactions too
       await withPreparedStatementsCheck(async (trx, getPreparedStatements) => {
         const transactionUsers = await trx('users').select('*').where('active', true);
         expect(transactionUsers).toHaveLength(2);
@@ -110,168 +110,119 @@ describe.skipIf(shouldSkip)('Integration tests with PostgreSQL', () => {
   });
 
   describe('autoNameAllSelects option', () => {
-    it('should automatically prepare SELECT queries when enabled', async () => {
+    let autoNameKnex: typeof knex;
+
+    beforeAll(() => {
       // Create knex instance with autoNameAllSelects enabled
-      const knexAutoName = createTestKnex({ autoNameAllSelects: true });
+      autoNameKnex = createTestKnex({ autoNameAllSelects: true });
+    });
 
-      try {
-        // Use a transaction-based helper with the custom knex instance
-        await knexAutoName.transaction(async (trx) => {
-          const getPreparedStatements = async (): Promise<PgPreparedStatement[]> => {
-            const queryResult = await trx.raw<{ rows: PgPreparedStatement[] }>(
-              'SELECT name, statement FROM pg_prepared_statements WHERE name LIKE ?',
-              ['auto-%']
-            );
-            return queryResult.rows;
-          };
+    afterAll(() => {
+      autoNameKnex.destroy();
+    });
 
-          // Execute a SELECT query WITHOUT calling .prepared()
-          const users = await trx('users').select('*').where('active', true).orderBy('id');
+    it('should automatically prepare SELECT queries when enabled', async () => {
+      await withPreparedStatementsCheck(async (trx, getPreparedStatements) => {
+        // Execute a SELECT query WITHOUT calling .prepared()
+        const users = await trx('users').select('*').where('active', true).orderBy('id');
 
-          expect(users).toHaveLength(2);
-          expect(users[0].name).toBe('Alice');
-          expect(users[1].name).toBe('Bob');
+        expect(users).toHaveLength(2);
+        expect(users[0].name).toBe('Alice');
+        expect(users[1].name).toBe('Bob');
 
-          // Verify that a prepared statement was automatically created
-          const statements = await getPreparedStatements();
+        // Verify that a prepared statement was automatically created
+        const statements = await getPreparedStatements();
 
-          expect(statements.length).toBeGreaterThan(0);
-          // Verify the prepared statement contains our query
-          const ourStatement = statements.find(
-            (s) =>
-              s.statement.toLowerCase().includes('"users"') &&
-              s.statement.toLowerCase().includes('"active"')
-          );
-          expect(ourStatement).toBeDefined();
-          expect(ourStatement!.name).toMatch(/^auto-[0-9a-f]{16}$/);
-        });
-      } finally {
-        await knexAutoName.destroy();
-      }
+        expect(statements.length).toBeGreaterThan(0);
+        // Verify the prepared statement contains our query
+        const ourStatement = statements.find(
+          (s) =>
+            s.statement.toLowerCase().includes('"users"') &&
+            s.statement.toLowerCase().includes('"active"')
+        );
+        expect(ourStatement).toBeDefined();
+        expect(ourStatement!.name).toMatch(/^auto-[0-9a-f]{16}$/);
+      }, autoNameKnex);
     });
 
     it('should not auto-prepare non-SELECT queries even with autoNameAllSelects enabled', async () => {
-      // Create knex instance with autoNameAllSelects enabled
-      const knexAutoName = createTestKnex({ autoNameAllSelects: true });
-
       try {
-        await knexAutoName
-          .transaction(async (trx) => {
-            const getPreparedStatements = async (): Promise<PgPreparedStatement[]> => {
-              const queryResult = await trx.raw<{ rows: PgPreparedStatement[] }>(
-                'SELECT name, statement FROM pg_prepared_statements'
-              );
-              return queryResult.rows;
-            };
+        await withPreparedStatementsCheck(async (trx, getPreparedStatements) => {
+          // Get prepared statements before the INSERT
+          const beforeStatements = await getPreparedStatements();
+          const beforeCount = beforeStatements.length;
 
-            // Get prepared statements before the INSERT
-            const beforeStatements = await getPreparedStatements();
-            const beforeCount = beforeStatements.length;
+          // Execute an INSERT query WITHOUT calling .prepared()
+          const [newUser] = await trx('users')
+            .insert({
+              name: 'TestUser',
+              email: 'test-auto-name@example.com',
+              active: true,
+            })
+            .returning('*');
 
-            // Execute an INSERT query WITHOUT calling .prepared()
-            const [newUser] = await trx('users')
-              .insert({
-                name: 'TestUser',
-                email: 'test-auto-name@example.com',
-                active: true,
-              })
-              .returning('*');
+          expect(newUser.name).toBe('TestUser');
 
-            expect(newUser.name).toBe('TestUser');
+          // Verify no new prepared statement was created for INSERT
+          const afterStatements = await getPreparedStatements();
 
-            // Verify no new prepared statement was created for INSERT
-            const afterStatements = await getPreparedStatements();
+          // Should be the same count (no new prepared statement for INSERT)
+          expect(afterStatements.length).toBe(beforeCount);
 
-            // Should be the same count (no new prepared statement for INSERT)
-            expect(afterStatements.length).toBe(beforeCount);
-
-            // Roll back the transaction to avoid affecting other tests
-            throw new Error('Rollback');
-          })
-          .catch((err) => {
-            // Ignore the rollback error
-            if (err.message !== 'Rollback') {
-              throw err;
-            }
-          });
-      } finally {
-        await knexAutoName.destroy();
+          // Roll back the transaction to avoid affecting other tests
+          throw new Error('Rollback');
+        }, autoNameKnex);
+      } catch (err) {
+        // Ignore the rollback error
+        if ((err as Error).message !== 'Rollback') {
+          throw err;
+        }
       }
     });
 
     it('should respect explicit .prepared(false) even with autoNameAllSelects enabled', async () => {
-      // Create knex instance with autoNameAllSelects enabled
-      const knexAutoName = createTestKnex({ autoNameAllSelects: true });
+      await withPreparedStatementsCheck(async (trx, getPreparedStatements) => {
+        const preparedName = getRandomPreparedName('explicit-disabled');
 
-      try {
-        await knexAutoName.transaction(async (trx) => {
-          const getPreparedStatements = async (name: string): Promise<PgPreparedStatement[]> => {
-            const queryResult = await trx.raw<{ rows: PgPreparedStatement[] }>(
-              'SELECT name, statement FROM pg_prepared_statements WHERE name = ?',
-              [name]
-            );
-            return queryResult.rows;
-          };
+        // Execute SELECT with explicit .prepared(false)
+        const users = await trx('users')
+          .prepared(false)
+          .select('*')
+          .where('active', true)
+          .orderBy('id');
 
-          const preparedName = getRandomPreparedName('explicit-disabled');
+        expect(users).toHaveLength(2);
 
-          // Execute SELECT with explicit .prepared(false)
-          const users = await trx('users')
-            .prepared(false)
-            .select('*')
-            .where('active', true)
-            .orderBy('id');
+        // Verify no prepared statement was created with our name
+        const statements = await getPreparedStatements(preparedName);
 
-          expect(users).toHaveLength(2);
-
-          // Verify no prepared statement was created with our name
-          const statements = await getPreparedStatements(preparedName);
-
-          expect(statements).toHaveLength(0);
-        });
-      } finally {
-        await knexAutoName.destroy();
-      }
+        expect(statements).toHaveLength(0);
+      }, autoNameKnex);
     });
 
     it('should allow explicit prepared names to override autoNameAllSelects', async () => {
-      // Create knex instance with autoNameAllSelects enabled
-      const knexAutoName = createTestKnex({ autoNameAllSelects: true });
+      await withPreparedStatementsCheck(async (trx, getPreparedStatements) => {
+        const preparedName = getRandomPreparedName('custom-name');
 
-      try {
-        await knexAutoName.transaction(async (trx) => {
-          const getPreparedStatements = async (name: string): Promise<PgPreparedStatement[]> => {
-            const queryResult = await trx.raw<{ rows: PgPreparedStatement[] }>(
-              'SELECT name, statement FROM pg_prepared_statements WHERE name = ?',
-              [name]
-            );
-            return queryResult.rows;
-          };
+        // Execute SELECT with explicit custom name
+        const users = await trx('users')
+          .prepared(preparedName)
+          .select('*')
+          .where('active', true)
+          .orderBy('id');
 
-          const preparedName = getRandomPreparedName('custom-name');
+        expect(users).toHaveLength(2);
 
-          // Execute SELECT with explicit custom name
-          const users = await trx('users')
-            .prepared(preparedName)
-            .select('*')
-            .where('active', true)
-            .orderBy('id');
+        // Verify prepared statement was created with custom name (not auto-generated)
+        const statements = await getPreparedStatements(preparedName);
 
-          expect(users).toHaveLength(2);
-
-          // Verify prepared statement was created with custom name (not auto-generated)
-          const statements = await getPreparedStatements(preparedName);
-
-          expect(statements).toHaveLength(1);
-          expect(statements[0].name).toBe(preparedName);
-        });
-      } finally {
-        await knexAutoName.destroy();
-      }
+        expect(statements).toHaveLength(1);
+        expect(statements[0].name).toBe(preparedName);
+      }, autoNameKnex);
     });
 
     it('should not auto-prepare when autoNameAllSelects is false (default)', async () => {
-      // Use default knex instance (autoNameAllSelects: false)
+      // Uses default knex instance (autoNameAllSelects: false)
       await withPreparedStatementsCheck(async (trx, getPreparedStatements) => {
         // Get initial prepared statement count
         const beforeStatements = await getPreparedStatements();
@@ -618,121 +569,81 @@ describe.skipIf(shouldSkip)('Integration tests with PostgreSQL', () => {
   });
 
   describe('IN clause rewriting', () => {
-    it('should rewrite whereIn and return correct results for integers', async () => {
+    let withRewriteKnex: typeof knex;
+
+    beforeAll(() => {
       // Create knex instance with rewriteInClauses enabled
-      const knexWithRewrite = createTestKnex({ rewriteInClauses: true });
+      withRewriteKnex = createTestKnex({ rewriteInClauses: true });
+    });
+    afterAll(() => {
+      withRewriteKnex.destroy();
+    });
+    it('should rewrite whereIn and return correct results for integers', async () => {
+      await withPreparedStatementsCheck(async (trx, getPreparedStatements) => {
+        const preparedName = getRandomPreparedName('wherein-integers');
+        const users = await trx('users')
+          .prepared(preparedName)
+          .select('*')
+          .whereIn('id', [userIds.user1Id, userIds.user2Id])
+          .orderBy('id');
 
-      try {
-        await knexWithRewrite.transaction(async (trx) => {
-          const getPreparedStatements = async (name: string): Promise<PgPreparedStatement[]> => {
-            const queryResult = await trx.raw<{ rows: PgPreparedStatement[] }>(
-              'SELECT name, statement FROM pg_prepared_statements WHERE name = ?',
-              [name]
-            );
-            return queryResult.rows;
-          };
+        expect(users).toHaveLength(2);
+        expect(users[0].name).toBe('Alice');
+        expect(users[1].name).toBe('Bob');
 
-          const preparedName = getRandomPreparedName('wherein-integers');
-          const users = await trx('users')
-            .select('*')
-            .whereIn('id', [userIds.user1Id, userIds.user2Id])
-            .orderBy('id')
-            .prepared(preparedName);
+        // Check prepared statements
+        const statements = await getPreparedStatements(preparedName);
 
-          expect(users).toHaveLength(2);
-          expect(users[0].name).toBe('Alice');
-          expect(users[1].name).toBe('Bob');
-
-          // Check prepared statements
-          const statements = await getPreparedStatements(preparedName);
-
-          expect(statements).toHaveLength(1);
-          expect(statements[0].statement).toContain('= ANY');
-          expect(statements[0].statement).toContain('::int[]');
-        });
-      } finally {
-        await knexWithRewrite.destroy();
-      }
+        expect(statements).toHaveLength(1);
+        expect(statements[0].statement).toContain('= ANY');
+        expect(statements[0].statement).toContain('::int[]');
+      }, withRewriteKnex);
     });
 
     it('should rewrite whereNotIn and return correct results for strings', async () => {
-      // Create knex instance with rewriteInClauses enabled
-      const knexWithRewrite = createTestKnex({ rewriteInClauses: true });
+      await withPreparedStatementsCheck(async (trx, getPreparedStatements) => {
+        const preparedName = getRandomPreparedName('wherenotin-strings');
+        const users = await trx('users')
+          .prepared(preparedName)
+          .select('*')
+          .whereNotIn('name', ['Alice', 'Bob'])
+          .orderBy('id');
 
-      try {
-        await knexWithRewrite.transaction(async (trx) => {
-          const getPreparedStatements = async (name: string): Promise<PgPreparedStatement[]> => {
-            const queryResult = await trx.raw<{ rows: PgPreparedStatement[] }>(
-              'SELECT name, statement FROM pg_prepared_statements WHERE name = ?',
-              [name]
-            );
-            return queryResult.rows;
-          };
+        expect(users).toHaveLength(1);
+        expect(users[0].name).toBe('Charlie');
 
-          const preparedName = getRandomPreparedName('wherenotin-strings');
-          const users = await trx('users')
-            .prepared(preparedName)
-            .select('*')
-            .whereNotIn('name', ['Alice', 'Bob'])
-            .orderBy('id');
-
-          expect(users).toHaveLength(1);
-          expect(users[0].name).toBe('Charlie');
-
-          // Validate that the prepared statement was created with <> ALL clause (rewritten from NOT IN)
-          const statements = await getPreparedStatements(preparedName);
-          expect(statements).toHaveLength(1);
-          expect(statements[0].statement.toLowerCase()).toContain('<> all');
-          expect(statements[0].statement.toLowerCase()).toContain('::text[]');
-          expect(statements[0].statement.toLowerCase()).toContain('"name"');
-        });
-      } finally {
-        await knexWithRewrite.destroy();
-      }
+        // Validate that the prepared statement was created with <> ALL clause (rewritten from NOT IN)
+        const statements = await getPreparedStatements(preparedName);
+        expect(statements).toHaveLength(1);
+        expect(statements[0].statement.toLowerCase()).toContain('<> all');
+        expect(statements[0].statement.toLowerCase()).toContain('::text[]');
+        expect(statements[0].statement.toLowerCase()).toContain('"name"');
+      }, withRewriteKnex);
     });
 
     it('should handle multiple IN clauses in one query', async () => {
-      // Create knex instance with rewriteInClauses enabled
-      const knexWithRewrite = createTestKnex({ rewriteInClauses: true });
+      await withPreparedStatementsCheck(async (trx, getPreparedStatements) => {
+        const preparedName = getRandomPreparedName('multiple-in-clauses');
+        const posts = await trx('posts')
+          .prepared(preparedName)
+          .select('*')
+          .whereIn('user_id', [userIds.user1Id, userIds.user2Id])
+          .whereIn('published', [true])
+          .orderBy('id');
 
-      try {
-        await knexWithRewrite.transaction(async (trx) => {
-          const getPreparedStatements = async (name: string): Promise<PgPreparedStatement[]> => {
-            const queryResult = await trx.raw<{ rows: PgPreparedStatement[] }>(
-              'SELECT name, statement FROM pg_prepared_statements WHERE name = ?',
-              [name]
-            );
-            return queryResult.rows;
-          };
+        expect(posts).toHaveLength(2);
 
-          const preparedName = getRandomPreparedName('multiple-in-clauses');
-          const posts = await trx('posts')
-            .prepared(preparedName)
-            .select('*')
-            .whereIn('user_id', [userIds.user1Id, userIds.user2Id])
-            .whereIn('published', [true])
-            .orderBy('id');
-
-          expect(posts).toHaveLength(2);
-
-          // Validate that the prepared statement was created with both IN clauses
-          const statements = await getPreparedStatements(preparedName);
-          expect(statements).toHaveLength(1);
-          expect(statements[0].statement.toLowerCase()).toContain('from "posts"');
-          expect(statements[0].statement.toLowerCase()).toContain('user_id');
-          expect(statements[0].statement.toLowerCase()).toContain('published');
-        });
-      } finally {
-        await knexWithRewrite.destroy();
-      }
+        // Validate that the prepared statement was created with both IN clauses
+        const statements = await getPreparedStatements(preparedName);
+        expect(statements).toHaveLength(1);
+        expect(statements[0].statement.toLowerCase()).toContain('from "posts"');
+        expect(statements[0].statement.toLowerCase()).toContain('user_id');
+        expect(statements[0].statement.toLowerCase()).toContain('published');
+      }, withRewriteKnex);
     });
 
     it('should work correctly with rewriteInClauses disabled', async () => {
-      // Create a new knex instance with rewriting disabled
-      const { createTestKnex: createTestKnexOriginal } = await import('./setup');
-      const knexNoRewrite = createTestKnexOriginal({ rewriteInClauses: false });
-
-      const users = await knexNoRewrite('users')
+      const users = await knex('users')
         .prepared()
         .select('*')
         .whereIn('id', [userIds.user1Id, userIds.user2Id])
@@ -741,49 +652,32 @@ describe.skipIf(shouldSkip)('Integration tests with PostgreSQL', () => {
       expect(users).toHaveLength(2);
       expect(users[0].name).toBe('Alice');
       expect(users[1].name).toBe('Bob');
-
-      await knexNoRewrite.destroy();
     });
 
     it('should handle complex query with joins and IN clauses', async () => {
-      // Create knex instance with rewriteInClauses enabled
-      const knexWithRewrite = createTestKnex({ rewriteInClauses: true });
+      await withPreparedStatementsCheck(async (trx, getPreparedStatements) => {
+        const preparedName = getRandomPreparedName('join-with-in-clauses');
+        const results = await trx('users')
+          .prepared(preparedName)
+          .select('users.name', 'posts.title')
+          .join('posts', 'users.id', 'posts.user_id')
+          .whereIn('users.id', [userIds.user1Id, userIds.user2Id])
+          .whereIn('posts.published', [true])
+          .orderBy('users.id');
 
-      try {
-        await knexWithRewrite.transaction(async (trx) => {
-          const getPreparedStatements = async (name: string): Promise<PgPreparedStatement[]> => {
-            const queryResult = await trx.raw<{ rows: PgPreparedStatement[] }>(
-              'SELECT name, statement FROM pg_prepared_statements WHERE name = ?',
-              [name]
-            );
-            return queryResult.rows;
-          };
+        expect(results).toHaveLength(2);
+        expect(results[0].name).toBe('Alice');
+        expect(results[1].name).toBe('Bob');
 
-          const preparedName = getRandomPreparedName('join-with-in-clauses');
-          const results = await trx('users')
-            .prepared(preparedName)
-            .select('users.name', 'posts.title')
-            .join('posts', 'users.id', 'posts.user_id')
-            .whereIn('users.id', [userIds.user1Id, userIds.user2Id])
-            .whereIn('posts.published', [true])
-            .orderBy('users.id');
-
-          expect(results).toHaveLength(2);
-          expect(results[0].name).toBe('Alice');
-          expect(results[1].name).toBe('Bob');
-
-          // Validate that the prepared statement was created with JOIN and = ANY clauses (rewritten from IN)
-          const statements = await getPreparedStatements(preparedName);
-          expect(statements).toHaveLength(1);
-          expect(statements[0].statement.toLowerCase()).toContain('join');
-          // Check for = ANY patterns (rewritten from IN clauses)
-          const anyClauses = statements[0].statement.toLowerCase().match(/=\s*any\s*\(/g);
-          expect(anyClauses).toBeDefined();
-          expect(anyClauses!.length).toBeGreaterThanOrEqual(2);
-        });
-      } finally {
-        await knexWithRewrite.destroy();
-      }
+        // Validate that the prepared statement was created with JOIN and = ANY clauses (rewritten from IN)
+        const statements = await getPreparedStatements(preparedName);
+        expect(statements).toHaveLength(1);
+        expect(statements[0].statement.toLowerCase()).toContain('join');
+        // Check for = ANY patterns (rewritten from IN clauses)
+        const anyClauses = statements[0].statement.toLowerCase().match(/=\s*any\s*\(/g);
+        expect(anyClauses).toBeDefined();
+        expect(anyClauses!.length).toBeGreaterThanOrEqual(2);
+      }, withRewriteKnex);
     });
   });
 

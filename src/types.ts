@@ -1,3 +1,6 @@
+import { Knex } from 'knex';
+import { KNEX_PREPARED_OPTIONS_SYMBOL } from './symbols';
+
 /**
  * Configuration options for knex-prepared.
  */
@@ -34,6 +37,14 @@ export interface KnexPreparedOptions {
    * @default process.env.NODE_ENV === 'production'
    */
   disableWarnings?: boolean;
+
+  /**
+   * Maximum number of SQL statements to cache for auto-name hash generation.
+   * Uses an LRU cache to avoid re-hashing the same SQL repeatedly.
+   * Set to 0 to disable caching.
+   * @default 1000
+   */
+  autoNameCacheSize?: number;
 }
 
 /**
@@ -45,4 +56,9 @@ export interface ResolvedKnexPreparedOptions {
   autoNameAllSelects: boolean;
   rewriteInClauses: boolean;
   disableWarnings: boolean;
+  autoNameCacheSize: number;
+}
+
+export interface KnexWithOptions extends Knex {
+  [KNEX_PREPARED_OPTIONS_SYMBOL]: ResolvedKnexPreparedOptions;
 }

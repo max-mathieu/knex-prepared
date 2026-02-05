@@ -1,13 +1,6 @@
-import type { Knex } from 'knex';
-
-/** Symbol used to store prepared statement metadata on QueryBuilder instances. */
-export const PREPARED_SYMBOL = Symbol('knex-prepared');
-
-/** Symbol used to store knex-prepared options on Knex instances. */
-export const KNEX_PREPARED_OPTIONS_SYMBOL = Symbol('knex-prepared-options');
-
-/** Map to store prepared statement metadata globally so it can be accessed in client.query() */
-export const GLOBAL_PREPARED_METADATA = new Map<string, PreparedMetadata>();
+import type { KnexWithOptions, ResolvedKnexPreparedOptions } from './types';
+import { KNEX_PREPARED_OPTIONS_SYMBOL, PREPARED_SYMBOL } from './symbols';
+import { Knex } from 'knex';
 
 /**
  * Metadata stored on QueryBuilder instances.
@@ -17,10 +10,28 @@ export const GLOBAL_PREPARED_METADATA = new Map<string, PreparedMetadata>();
  */
 export interface PreparedMetadata {
   name: 'auto' | string | null;
+  /**
+   * Tracks IN clause rewrites for this query.
+   * Key is the column identifier, value is the rewrite type.
+   */
+  inClauseRewrites?: Map<string, InClauseRewriteType>;
 }
 
+/**
+ * Type of IN clause rewrite to apply.
+ */
+export type InClauseRewriteType = 'whereIn' | 'whereNotIn' | 'orWhereIn' | 'orWhereNotIn';
+
 interface QueryBuilderConstructor {
-  prototype: { prepared?: unknown };
+  prototype: {
+    prepared?: unknown;
+    whereIn: (...args: unknown[]) => unknown;
+    whereNotIn: (...args: unknown[]) => unknown;
+    orWhereIn: (...args: unknown[]) => unknown;
+    orWhereNotIn: (...args: unknown[]) => unknown;
+    whereRaw: (...args: unknown[]) => unknown;
+    orWhereRaw: (...args: unknown[]) => unknown;
+  };
   extend: (
     name: string,
     fn: (this: QueryBuilderInstance, arg?: string | boolean) => unknown
@@ -28,14 +39,22 @@ interface QueryBuilderConstructor {
 }
 
 interface QueryBuilderInstance {
-  [key: symbol]: PreparedMetadata;
+  [key: symbol]: PreparedMetadata | boolean | ResolvedKnexPreparedOptions;
+  [key: string]: unknown;
   queryContext: (context?: unknown) => unknown;
   _knexPreparedMetadata?: PreparedMetadata;
+  whereIn: (...args: unknown[]) => unknown;
+  whereNotIn: (...args: unknown[]) => unknown;
+  orWhereIn: (...args: unknown[]) => unknown;
+  orWhereNotIn: (...args: unknown[]) => unknown;
+  whereRaw: (...args: unknown[]) => unknown;
+  orWhereRaw: (...args: unknown[]) => unknown;
 }
 
 /**
  * Stores prepared statement metadata on a QueryBuilder instance in multiple locations
  * for reliability across different code paths (Symbol, queryContext, and direct property).
+ * Also merges the whereIn usage flag if it was set.
  */
 export const setQueryBuilderMetadata = (
   builder: QueryBuilderInstance,
@@ -46,7 +65,10 @@ export const setQueryBuilderMetadata = (
 
   // Store in queryContext for access in query events
   const existingContext = (builder.queryContext() as Record<symbol, unknown> | undefined) || {};
-  const newContext = { ...existingContext, [PREPARED_SYMBOL]: metadata };
+  const newContext = {
+    ...existingContext,
+    [PREPARED_SYMBOL]: metadata,
+  };
   builder.queryContext(newContext);
 
   // Store as direct property for additional access path
@@ -54,7 +76,38 @@ export const setQueryBuilderMetadata = (
 };
 
 /**
+ * Gets prepared statement metadata from a QueryBuilder instance.
+ */
+export const getQueryBuilderMetadata = (
+  builder: QueryBuilderInstance
+): PreparedMetadata | undefined => {
+  const metadata = (builder[PREPARED_SYMBOL] as PreparedMetadata) || builder._knexPreparedMetadata;
+
+  return metadata;
+};
+
+/**
+ * Infers the PostgreSQL array type from a value.
+ */
+const inferPostgresArrayType = (value: unknown): string => {
+  if (typeof value === 'number') {
+    return Number.isInteger(value) ? 'int' : 'float';
+  }
+  if (typeof value === 'string') {
+    return 'text';
+  }
+  if (typeof value === 'boolean') {
+    return 'boolean';
+  }
+  if (value instanceof Date) {
+    return 'timestamp';
+  }
+  return 'text';
+};
+
+/**
  * Extends Knex QueryBuilder with the .prepared() chainable method.
+ * Also wraps whereIn/whereNotIn methods to track usage.
  * Idempotent - safe to call multiple times.
  */
 export const extendQueryBuilder = (knex: Knex): void => {
@@ -74,6 +127,52 @@ export const extendQueryBuilder = (knex: Knex): void => {
       return this;
     }
   );
+
+  // Wrap whereIn/whereNotIn methods to track usage and optionally rewrite
+  const methodsToWrap = ['whereIn', 'whereNotIn', 'orWhereIn', 'orWhereNotIn'] as const;
+
+  const options = (knex as KnexWithOptions)[KNEX_PREPARED_OPTIONS_SYMBOL];
+
+  for (const methodName of methodsToWrap) {
+    const originalMethod = QueryBuilderConstructor.prototype[methodName];
+    QueryBuilderConstructor.prototype[methodName] = function (...args: unknown[]) {
+      // Get current metadata
+      const metadata = getQueryBuilderMetadata(this as QueryBuilderInstance);
+
+      // If rewriteInClauses is enabled, rewrite to = ANY() / <> ALL()
+      if (options?.rewriteInClauses && args.length >= 2) {
+        const [column, values] = args;
+
+        // Only rewrite if we have an array of values
+        if (Array.isArray(values)) {
+          const isOr = methodName.startsWith('or');
+          const isNot = methodName.includes('Not');
+
+          // Use whereRaw/orWhereRaw with ANY/ALL operator
+          const whereRawMethod = isOr ? 'orWhereRaw' : 'whereRaw';
+          const operator = isNot ? '<> ALL' : '= ANY';
+
+          // Build the raw SQL expression
+          // PostgreSQL ANY/ALL requires casting array to proper type
+          const inferredType = inferPostgresArrayType(values[0]);
+          const castType = `${inferredType}[]`;
+
+          return this[whereRawMethod](`?? ${operator}(?::${castType})`, [column, values]);
+        }
+      }
+
+      // Track that IN clause was used (for warning messages)
+      if (metadata) {
+        if (!metadata.inClauseRewrites) {
+          metadata.inClauseRewrites = new Map();
+        }
+        metadata.inClauseRewrites.set(methodName, methodName as InClauseRewriteType);
+        setQueryBuilderMetadata(this as QueryBuilderInstance, metadata);
+      }
+
+      return originalMethod.apply(this, args);
+    };
+  }
 };
 
 const determineNameValue = (nameOrFlag?: string | boolean): PreparedMetadata['name'] => {
