@@ -2,7 +2,14 @@
   "name": "knex-prepared",
   "version": "0.1.0",
   "description": "Extends Knex.js to support PostgreSQL prepared statements with simple, type-safe APIs",
-  "keywords": ["knex", "postgresql", "prepared-statements", "database", "sql", "performance"],
+  "keywords": [
+    "knex",
+    "postgresql",
+    "prepared-statements",
+    "database",
+    "sql",
+    "performance"
+  ],
   "license": "MIT",
   "author": "Max Mathieu",
   "repository": {
@@ -33,28 +40,41 @@
     "build": "tsup",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "benchmark": "tsx test/benchmark.ts",
     "lint": "eslint src test --ext .ts",
+    "lint:fix": "eslint src test --ext .ts --fix",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\"",
-    "prepublishOnly": "npm run lint && npm run format:check && npm test && npm run build"
+    "typecheck": "tsc --noEmit",
+    "verify-types": "attw --pack .",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run lint && npm run format:check && npm run typecheck && npm test && npm run build && npm run verify-types"
   },
   "peerDependencies": {
     "knex": "^3.0.0"
   },
   "devDependencies": {
+    "@arethetypeswrong/cli": "^0.13.0",
     "@types/node": "^20.11.0",
     "@typescript-eslint/eslint-plugin": "^6.19.0",
     "@typescript-eslint/parser": "^6.19.0",
+    "@vitest/coverage-v8": "^1.2.0",
+    "dotenv": "^16.4.1",
     "eslint": "^8.56.0",
     "eslint-config-prettier": "^9.1.0",
     "knex": "^3.1.0",
     "pg": "^8.11.3",
     "prettier": "^3.2.4",
     "tsup": "^8.0.1",
+    "tsx": "^4.7.0",
     "typescript": "^5.3.3",
     "vitest": "^1.2.0"
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "tiny-lru": "^11.4.7"
   }
 }
