@@ -1,7 +1,6 @@
 import type { Knex } from 'knex';
 import { setQueryBuilderMetadata, type PreparedMetadata } from './query-builder';
-import type { KnexWithClient } from './types';
-import { KNEX_PREPARED_OPTIONS_SYMBOL } from './symbols';
+import { getOptions } from './types';
 
 /** QueryBuilder with prepared statement metadata pre-configured. */
 export type PreparedQueryBuilder<
@@ -17,17 +16,16 @@ export interface PreparedFactory {
 }
 
 /** Adds the `knex.prepared(tableName)` factory method. */
-export const addPreparedFactory = (knex: Knex): Knex & { prepared: PreparedFactory } => {
-  const extended: Knex & { prepared?: PreparedFactory } = knex;
+export const addPreparedFactory = (knex: Knex): void => {
+  const extended = knex as Knex & { prepared?: PreparedFactory };
 
   extended.prepared = function <TRecord extends {} = Record<string, unknown>, TResult = unknown[]>(
     tableName: string
   ): PreparedQueryBuilder<TRecord, TResult> {
     const builder = knex<TRecord, TResult>(tableName);
 
-    // Get the rewriteInClauses option from the knex instance's client
-    const knexWithClient = knex as KnexWithClient;
-    const options = knexWithClient.client[KNEX_PREPARED_OPTIONS_SYMBOL];
+    // Get the rewriteInClauses option from the knex client
+    const options = getOptions(knex.client);
 
     const metadata: PreparedMetadata = {
       name: 'auto',
@@ -38,8 +36,6 @@ export const addPreparedFactory = (knex: Knex): Knex & { prepared: PreparedFacto
 
     return builder;
   };
-
-  return extended as Knex & { prepared: PreparedFactory };
 };
 
 // TypeScript module augmentation to add the factory method to Knex

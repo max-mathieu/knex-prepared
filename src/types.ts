@@ -60,17 +60,6 @@ export interface ResolvedKnexPreparedOptions {
 }
 
 /**
- * Knex instance with symbol property for storing options.
- */
-export interface KnexWithSymbol {
-  [key: symbol]: unknown;
-}
-
-export interface KnexWithOptions extends Knex, KnexWithSymbol {
-  [KNEX_PREPARED_OPTIONS_SYMBOL]: ResolvedKnexPreparedOptions;
-}
-
-/**
  * Knex client interface with options symbol.
  */
 export interface KnexClient extends Knex.Client {
@@ -78,41 +67,24 @@ export interface KnexClient extends Knex.Client {
 }
 
 /**
- * Knex instance with client property exposed.
+ * Type for objects that can have symbol properties.
  */
-export interface KnexWithClient extends Knex {
-  client: KnexClient;
-}
-
-/**
- * Type guard to check if a Knex instance has options configured.
- */
-export function hasOptions(knex: Knex): knex is KnexWithOptions {
-  const knexWithSymbol = knex as unknown as KnexWithSymbol;
-  return KNEX_PREPARED_OPTIONS_SYMBOL in knexWithSymbol;
-}
-
-/**
- * Gets options from a Knex instance, throwing if not configured.
- */
-export function getOptions(knex: Knex): ResolvedKnexPreparedOptions {
-  if (!hasOptions(knex)) {
-    throw new Error('knex-prepared options not found. Did you call knexPrepared()?');
-  }
-  return knex[KNEX_PREPARED_OPTIONS_SYMBOL];
-}
-
-/**
- * Sets options on a Knex instance.
- */
-export function setOptions(knex: Knex, options: ResolvedKnexPreparedOptions): void {
-  const knexWithSymbol = knex as unknown as KnexWithSymbol;
-  knexWithSymbol[KNEX_PREPARED_OPTIONS_SYMBOL] = options;
+export interface WithSymbol {
+  [key: symbol]: unknown;
 }
 
 /**
  * Gets options from a Knex client.
  */
-export function getClientOptions(client: KnexClient): ResolvedKnexPreparedOptions | undefined {
-  return client[KNEX_PREPARED_OPTIONS_SYMBOL];
+export function getOptions(client: Knex.Client): ResolvedKnexPreparedOptions | undefined {
+  const clientWithSymbol = client as unknown as WithSymbol;
+  return clientWithSymbol[KNEX_PREPARED_OPTIONS_SYMBOL] as ResolvedKnexPreparedOptions | undefined;
+}
+
+/**
+ * Sets options on a Knex client.
+ */
+export function setOptions(client: Knex.Client, options: ResolvedKnexPreparedOptions): void {
+  const clientWithSymbol = client as unknown as WithSymbol;
+  clientWithSymbol[KNEX_PREPARED_OPTIONS_SYMBOL] = options;
 }

@@ -1,6 +1,6 @@
-import type { KnexClient } from './types';
-import { KNEX_PREPARED_OPTIONS_SYMBOL, PREPARED_SYMBOL } from './symbols';
 import { Knex } from 'knex';
+import { PREPARED_SYMBOL } from './symbols';
+import { getOptions, type KnexClient } from './types';
 
 /**
  * Metadata stored on QueryBuilder instances.
@@ -18,47 +18,36 @@ export interface PreparedMetadata {
 }
 
 /**
- * Type of IN clause rewrite to apply.
+ * QueryBuilder instance with access to client and queryContext.
  */
-export type InClauseRewriteType = 'whereIn' | 'whereNotIn' | 'orWhereIn' | 'orWhereNotIn';
-
-/**
- * QueryBuilder instance with symbol-based property access.
- */
-interface QueryBuilderWithSymbol extends Knex.QueryBuilder {
-  [PREPARED_SYMBOL]?: PreparedMetadata;
-  _knexPreparedMetadata?: PreparedMetadata;
+interface QueryBuilderWithClient {
   client: KnexClient;
+  queryContext(context?: unknown): unknown;
 }
 
 /**
- * Type guard to check if a QueryBuilder has our symbol property.
+ * Type guard to check if a value is a QueryBuilder.
  */
-function isQueryBuilderWithSymbol(builder: unknown): builder is QueryBuilderWithSymbol {
+function isQueryBuilder(builder: unknown): builder is QueryBuilderWithClient {
   return (
     typeof builder === 'object' &&
     builder !== null &&
     'queryContext' in builder &&
-    typeof builder.queryContext === 'function'
+    typeof (builder as QueryBuilderWithClient).queryContext === 'function'
   );
 }
 
 /**
- * Stores prepared statement metadata on a QueryBuilder instance in multiple locations
- * for reliability across different code paths (Symbol, queryContext, and direct property).
+ * Stores prepared statement metadata on a QueryBuilder instance via queryContext.
  */
 export const setQueryBuilderMetadata = (
   builder: Knex.QueryBuilder,
   metadata: PreparedMetadata
 ): void => {
-  if (!isQueryBuilderWithSymbol(builder)) {
+  if (!isQueryBuilder(builder)) {
     throw new Error('Invalid QueryBuilder instance');
   }
 
-  // Store using Symbol
-  builder[PREPARED_SYMBOL] = metadata;
-
-  // Store in queryContext for access in query events
   const existingContext = builder.queryContext();
   const contextObj = existingContext && typeof existingContext === 'object' ? existingContext : {};
   const newContext = {
@@ -66,9 +55,6 @@ export const setQueryBuilderMetadata = (
     [PREPARED_SYMBOL]: metadata,
   };
   builder.queryContext(newContext);
-
-  // Store as direct property for additional access path
-  builder._knexPreparedMetadata = metadata;
 };
 
 /**
@@ -77,11 +63,17 @@ export const setQueryBuilderMetadata = (
 export const getQueryBuilderMetadata = (
   builder: Knex.QueryBuilder
 ): PreparedMetadata | undefined => {
-  if (!isQueryBuilderWithSymbol(builder)) {
+  if (!isQueryBuilder(builder)) {
     return undefined;
   }
 
-  return builder[PREPARED_SYMBOL] || builder._knexPreparedMetadata;
+  const context = builder.queryContext();
+  if (context && typeof context === 'object') {
+    const contextWithSymbol = context as { [PREPARED_SYMBOL]?: PreparedMetadata };
+    return contextWithSymbol[PREPARED_SYMBOL];
+  }
+
+  return undefined;
 };
 
 /**
@@ -104,92 +96,8 @@ const inferPostgresArrayType = (value: unknown): string => {
 };
 
 /**
- * Extends Knex QueryBuilder with the .prepared() chainable method.
- * Also wraps whereIn/whereNotIn methods to replace with ANY if enabled in options.
- * Idempotent - safe to call multiple times.
+ * Determines the name value from the .prepared() argument.
  */
-export const extendQueryBuilder = (knex: Knex): void => {
-  const dummyQuery = knex.queryBuilder();
-  const QueryBuilderClass = dummyQuery.constructor;
-
-  // Check if prototype has the prepared method already
-  if ('prepared' in QueryBuilderClass.prototype) {
-    return;
-  }
-
-  // Use the static extend method that Knex provides
-  const extendMethod = (QueryBuilderClass as { extend?: (name: string, fn: unknown) => void })
-    .extend;
-  if (!extendMethod) {
-    throw new Error('QueryBuilder.extend method not found');
-  }
-
-  extendMethod.call(
-    QueryBuilderClass,
-    'prepared',
-    function (this: Knex.QueryBuilder, nameOrFlag?: string | boolean) {
-      const name = determineNameValue(nameOrFlag);
-
-      if (!isQueryBuilderWithSymbol(this)) {
-        throw new Error('Invalid QueryBuilder instance');
-      }
-
-      // Capture rewriteInClauses option from the query builder's client
-      const builderOptions = this.client[KNEX_PREPARED_OPTIONS_SYMBOL];
-      const metadata: PreparedMetadata = {
-        name,
-        rewriteInClauses: builderOptions?.rewriteInClauses,
-      };
-      setQueryBuilderMetadata(this, metadata);
-      return this;
-    }
-  );
-
-  // Wrap whereIn/whereNotIn methods to track usage and optionally rewrite
-  const methodsToWrap = ['whereIn', 'whereNotIn', 'orWhereIn', 'orWhereNotIn'] as const;
-
-  for (const methodName of methodsToWrap) {
-    const prototype = QueryBuilderClass.prototype as Record<string, unknown>;
-    const originalMethod = prototype[methodName];
-    if (typeof originalMethod !== 'function') {
-      continue;
-    }
-
-    prototype[methodName] = function (this: Knex.QueryBuilder, ...args: unknown[]) {
-      if (!isQueryBuilderWithSymbol(this)) {
-        return originalMethod.apply(this, args);
-      }
-
-      // Get current metadata
-      const metadata = getQueryBuilderMetadata(this);
-
-      // If rewriteInClauses is enabled in metadata, rewrite to = ANY() / <> ALL()
-      if (metadata?.rewriteInClauses && args.length >= 2) {
-        const [column, values] = args;
-
-        // Only rewrite if we have an array of values
-        if (Array.isArray(values)) {
-          const isOr = methodName.startsWith('or');
-          const isNot = methodName.includes('Not');
-
-          // Use whereRaw/orWhereRaw with ANY/ALL operator
-          const whereRawMethod = isOr ? 'orWhereRaw' : 'whereRaw';
-          const operator = isNot ? '<> ALL' : '= ANY';
-
-          // Build the raw SQL expression
-          // PostgreSQL ANY/ALL requires casting array to proper type
-          const inferredType = inferPostgresArrayType(values[0]);
-          const castType = `${inferredType}[]`;
-
-          return this[whereRawMethod](`?? ${operator}(?::${castType})`, [column, values]);
-        }
-      }
-
-      return originalMethod.apply(this, args);
-    };
-  }
-};
-
 const determineNameValue = (nameOrFlag?: string | boolean): PreparedMetadata['name'] => {
   if (nameOrFlag === false) return null;
   if (nameOrFlag === undefined || nameOrFlag === true) return 'auto';
@@ -198,6 +106,102 @@ const determineNameValue = (nameOrFlag?: string | boolean): PreparedMetadata['na
   throw new Error(
     `Invalid argument to .prepared(): expected string, boolean, or undefined, got ${typeof nameOrFlag}`
   );
+};
+
+/**
+ * QueryBuilder class with extend method.
+ */
+interface QueryBuilderClass {
+  extend(methodName: string, fn: unknown): void;
+  prototype: Record<string, unknown>;
+}
+
+/**
+ * Extends Knex QueryBuilder with the .prepared() chainable method.
+ * Uses Knex's global QueryBuilder.extend() API, which automatically works for all query builders
+ * including transactions.
+ * Idempotent - safe to call multiple times.
+ */
+export const extendQueryBuilder = (knex: Knex): void => {
+  // Get the QueryBuilder constructor from a dummy instance
+  const dummyBuilder = knex.queryBuilder();
+  const QueryBuilderConstructor = dummyBuilder.constructor as unknown as QueryBuilderClass;
+
+  // Check if already extended
+  if ('prepared' in QueryBuilderConstructor.prototype) {
+    return;
+  }
+
+  // Extend with .prepared() method
+  QueryBuilderConstructor.extend(
+    'prepared',
+    function (this: Knex.QueryBuilder, nameOrFlag?: string | boolean) {
+      const name = determineNameValue(nameOrFlag);
+
+      if (!isQueryBuilder(this)) {
+        throw new Error('Invalid QueryBuilder instance');
+      }
+
+      // Get options from the query builder's client
+      const options = getOptions(this.client);
+
+      const metadata: PreparedMetadata = {
+        name,
+        rewriteInClauses: options?.rewriteInClauses,
+      };
+
+      setQueryBuilderMetadata(this, metadata);
+      return this;
+    }
+  );
+
+  // Wrap whereIn/whereNotIn methods to optionally rewrite to = ANY() / <> ALL()
+  const methodsToWrap = ['whereIn', 'whereNotIn', 'orWhereIn', 'orWhereNotIn'] as const;
+
+  for (const methodName of methodsToWrap) {
+    const prototype = QueryBuilderConstructor.prototype;
+    const originalMethod = prototype[methodName];
+    if (typeof originalMethod !== 'function') {
+      continue;
+    }
+
+    prototype[methodName] = function (this: Knex.QueryBuilder, ...args: unknown[]) {
+      if (!isQueryBuilder(this)) {
+        return originalMethod.apply(this, args);
+      }
+
+      // Get current metadata
+      const metadata = getQueryBuilderMetadata(this);
+
+      // If rewriteInClauses is enabled, rewrite to = ANY() / <> ALL()
+      if (metadata?.rewriteInClauses && args.length >= 2) {
+        const [column, values] = args;
+
+        // Only rewrite if we have an array of values
+        if (Array.isArray(values) && values.length > 0) {
+          const isOr = methodName.startsWith('or');
+          const isNot = methodName.includes('Not');
+
+          // Use whereRaw/orWhereRaw with ANY/ALL operator
+          const operator = isNot ? '<> ALL' : '= ANY';
+
+          // Build the raw SQL expression
+          // PostgreSQL ANY/ALL requires casting array to proper type
+          const inferredType = inferPostgresArrayType(values[0]);
+          const castType = `${inferredType}[]`;
+
+          // Call whereRaw or orWhereRaw
+          if (isOr) {
+            return this.orWhereRaw(`?? ${operator}(?::${castType})`, [column, values]);
+          } else {
+            return this.whereRaw(`?? ${operator}(?::${castType})`, [column, values]);
+          }
+        }
+      }
+
+      return originalMethod.apply(this, args);
+    };
+  }
 };
 
 // TypeScript module augmentation to add .prepared() to Knex types

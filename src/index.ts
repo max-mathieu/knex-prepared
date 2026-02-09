@@ -3,9 +3,8 @@ import { extendQueryBuilder } from './query-builder';
 import { attachPreparedStatementHook } from './interceptor';
 import { addPreparedFactory } from './factory';
 import { wrapTransactionMethod } from './transaction';
-import type { KnexPreparedOptions, ResolvedKnexPreparedOptions, KnexWithClient } from './types';
+import type { KnexPreparedOptions, ResolvedKnexPreparedOptions } from './types';
 import { setOptions } from './types';
-import { KNEX_PREPARED_OPTIONS_SYMBOL } from './symbols';
 
 /**
  * Resolves options with defaults and validates them.
@@ -50,18 +49,23 @@ export const knexPrepared = <TKnex extends Knex = Knex>(
 ): TKnex & { prepared: (tableName: string) => Knex.QueryBuilder } => {
   const resolvedOptions = resolveOptions(options);
 
-  // Store options on knex instance and client using helper function
-  setOptions(knex, Object.freeze(resolvedOptions));
-
-  // Also store on client for query builder access
-  const knexWithClient = knex as KnexWithClient;
-  knexWithClient.client[KNEX_PREPARED_OPTIONS_SYMBOL] = resolvedOptions;
-
+  // Extend QueryBuilder globally (idempotent - safe to call multiple times)
+  // This automatically makes .prepared() available on all QueryBuilders including transactions
   extendQueryBuilder(knex);
-  const extended = addPreparedFactory(knex);
+
+  // Store options on the client so QueryBuilders can access them
+  setOptions(knex.client, Object.freeze(resolvedOptions));
+
+  // Add the factory method to this knex instance
+  addPreparedFactory(knex);
+
+  // Wrap transaction method to propagate options and factory to transaction instances
   wrapTransactionMethod(knex);
-  attachPreparedStatementHook(knex);
-  return extended as TKnex & { prepared: (tableName: string) => Knex.QueryBuilder };
+
+  // Attach query event listener to inject prepared statement names
+  attachPreparedStatementHook(knex, resolvedOptions);
+
+  return knex as TKnex & { prepared: (tableName: string) => Knex.QueryBuilder };
 };
 
 // Re-export types for convenience

@@ -2,8 +2,8 @@ import { createHash } from 'crypto';
 import { lru, type LRU } from 'tiny-lru';
 import type { Knex } from 'knex';
 import type { PreparedMetadata } from './query-builder';
-import type { KnexWithOptions, ResolvedKnexPreparedOptions } from './types';
-import { PREPARED_SYMBOL, KNEX_PREPARED_OPTIONS_SYMBOL } from './symbols';
+import type { ResolvedKnexPreparedOptions } from './types';
+import { PREPARED_SYMBOL } from './symbols';
 
 /**
  * Query data from Knex 'query' event.
@@ -14,49 +14,12 @@ interface QueryEventData {
   };
   sql?: string | unknown;
   bindings?: unknown[];
-  options?: Record<string, unknown>;
-}
-
-/**
- * Query object passed to client.query().
- */
-interface PgQueryObject {
-  sql: string;
-  bindings: unknown[];
-  queryContext?: {
-    [PREPARED_SYMBOL]?: PreparedMetadata;
-  };
+  __knexQueryUid?: string;
   options?: {
     name?: string;
     [key: string]: unknown;
   };
-  [key: string]: unknown;
 }
-
-/**
- * PostgreSQL connection from pg driver.
- */
-interface PgConnection {
-  query: (config: PgQueryConfig, values?: unknown, callback?: unknown) => unknown;
-  [PREPARED_SYMBOL]?: boolean;
-  [key: string]: unknown;
-}
-
-/**
- * Query configuration for pg driver.
- */
-interface PgQueryConfig {
-  text: string;
-  values?: unknown[];
-  name?: string;
-  [key: string]: unknown;
-}
-
-/**
- * Store prepared statement names for queries.
- * Maps SQL (after Knex formatting) -> prepared statement name.
- */
-const pendingNames = new Map<string, string>();
 
 // LRU cache for auto-generated prepared statement names
 // Maps normalized SQL -> generated name
@@ -138,40 +101,12 @@ const getPreparedStatementName = (
 
 /**
  * Attaches a query hook to inject prepared statement names before execution.
- * For PostgreSQL, the `name` property tells the pg driver to use prepared statements.
+ * For PostgreSQL, the `name` property in query options tells the pg driver to use prepared statements.
  */
-export const attachPreparedStatementHook = (knex: Knex): void => {
-  const options = (knex as KnexWithOptions)[KNEX_PREPARED_OPTIONS_SYMBOL];
-
-  if (!options) {
-    throw new Error('knex-prepared options not found. Did you call knexPrepared()?');
-  }
-
-  const client = knex.client as Knex.Client & {
-    query: (connection: PgConnection, obj: PgQueryObject) => Promise<unknown>;
-    acquireConnection: (...args: unknown[]) => Promise<PgConnection>;
-  };
-
-  const originalQuery = client.query.bind(client);
-  const originalAcquireConnection = client.acquireConnection.bind(client);
-
-  // Wrap client.query() for non-transaction queries
-  client.query = function (connection: PgConnection, obj: PgQueryObject) {
-    if (typeof obj.sql === 'string') {
-      const metadata = obj.queryContext?.[PREPARED_SYMBOL];
-      const preparedName = getPreparedStatementName(metadata, obj.sql, options);
-
-      if (preparedName) {
-        // Inject prepared statement name
-        obj.options = obj.options || {};
-        obj.options.name = preparedName;
-      }
-    }
-
-    return originalQuery(connection, obj);
-  };
-
-  // Listen to 'query' event to store prepared statement names for transaction queries (which bypass client.query)
+export const attachPreparedStatementHook = (
+  knex: Knex,
+  options: ResolvedKnexPreparedOptions
+): void => {
   knex.on('query', (queryData: QueryEventData) => {
     if (typeof queryData.sql !== 'string') {
       return;
@@ -181,39 +116,9 @@ export const attachPreparedStatementHook = (knex: Knex): void => {
     const preparedName = getPreparedStatementName(metadata, queryData.sql, options);
 
     if (preparedName) {
-      // Store the prepared name for this SQL to be picked up by connection.query()
-      pendingNames.set(queryData.sql, preparedName);
+      // Inject prepared statement name into query options
+      queryData.options = queryData.options || {};
+      queryData.options.name = preparedName;
     }
   });
-
-  // Wrap acquireConnection to patch connections for transactions
-  client.acquireConnection = async function (...args: unknown[]) {
-    const connection = await originalAcquireConnection(...args);
-
-    // Wrap the connection's query method if not already wrapped
-    if (connection && !connection[PREPARED_SYMBOL]) {
-      const originalConnectionQuery = connection.query.bind(connection);
-
-      connection.query = function (config: PgQueryConfig, values?: unknown, callback?: unknown) {
-        // For pg driver, config is { text: sql, values: bindings, ... }
-        if (config && typeof config === 'object' && config.text) {
-          const preparedName = pendingNames.get(config.text);
-
-          if (preparedName) {
-            // Inject prepared statement name
-            config.name = preparedName;
-
-            // Clean up to prevent memory leaks
-            pendingNames.delete(config.text);
-          }
-        }
-
-        return originalConnectionQuery(config, values, callback);
-      };
-
-      connection[PREPARED_SYMBOL] = true;
-    }
-
-    return connection;
-  };
 };

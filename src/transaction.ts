@@ -1,7 +1,6 @@
 import type { Knex } from 'knex';
 import { addPreparedFactory } from './factory';
-import type { KnexWithClient } from './types';
-import { KNEX_PREPARED_OPTIONS_SYMBOL } from './symbols';
+import { setOptions, getOptions } from './types';
 
 /**
  * Type guard to check if a value is a function.
@@ -11,21 +10,21 @@ function isFunction(value: unknown): value is (...args: unknown[]) => unknown {
 }
 
 /**
- * Wraps Knex transaction method to add prepared factory to transaction instances.
+ * Wraps Knex transaction method to propagate options and factory to transaction instances.
+ * This ensures transactions work with both chainable (.prepared()) and factory (trx.prepared()) APIs.
  */
 export const wrapTransactionMethod = (knex: Knex): void => {
   const originalTransaction = knex.transaction.bind(knex);
 
-  // Get the options from the parent knex instance
-  const knexWithClient = knex as KnexWithClient;
-  const parentOptions = knexWithClient.client[KNEX_PREPARED_OPTIONS_SYMBOL];
+  // Get the options from the parent knex client
+  const parentOptions = getOptions(knex.client);
 
-  // Override transaction method using Object.defineProperty since it's read-only
+  // Override transaction method
   Object.defineProperty(knex, 'transaction', {
     value: function (
       ...args: Parameters<typeof originalTransaction>
     ): ReturnType<typeof originalTransaction> {
-      // Get the callback from arguments (it could be in different positions depending on overload)
+      // Find the callback function in the arguments
       const callbackIndex = args.findIndex(isFunction);
 
       if (callbackIndex === -1) {
@@ -40,14 +39,13 @@ export const wrapTransactionMethod = (knex: Knex): void => {
 
       // Wrap the callback to extend the transaction instance
       const wrappedCallback = async (trx: Knex.Transaction): Promise<unknown> => {
+        // Propagate options to transaction's client
+        if (parentOptions) {
+          setOptions(trx.client, parentOptions);
+        }
+
         // Add prepared factory to transaction instance
         addPreparedFactory(trx);
-
-        // Copy options to the transaction's client so query builders can access them
-        const trxWithClient = trx as unknown as KnexWithClient;
-        if (trxWithClient.client && parentOptions) {
-          trxWithClient.client[KNEX_PREPARED_OPTIONS_SYMBOL] = parentOptions;
-        }
 
         return originalCallback(trx);
       };
@@ -56,7 +54,6 @@ export const wrapTransactionMethod = (knex: Knex): void => {
       const newArgs: unknown[] = [...args];
       newArgs[callbackIndex] = wrappedCallback;
 
-      // We know the args structure matches the original transaction signature
       type TransactionArgs = Parameters<typeof originalTransaction>;
       return originalTransaction(...(newArgs as TransactionArgs));
     },
